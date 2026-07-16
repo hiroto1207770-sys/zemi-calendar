@@ -533,7 +533,9 @@ const MEM = {};
 const now = () => Date.now();
 
 const MEMBERS0 = ['みおり','まい','めい','るい','そうた','ひろと','りの','ゆずか','ゆりな','あおい','さくら','あやか','ゆいの'].map(n=>({name:n}));
-const CFG = Object.assign({ url:'', appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'gemini-2.0-flash', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'gemini-2.0-flash', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+if(!CFG.url) CFG.url=DEFAULT_URL;
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
 if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON.stringify(['大翔','山田','佐藤','鈴木','高橋'])){ CFG.members=MEMBERS0.map(m=>({...m})); }
 // メンバーは {name, birthday} に正規化（旧データは文字列配列や nick 付き）
