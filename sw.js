@@ -1,6 +1,6 @@
 // キャッシュ優先 → 裏で更新。GASの初回応答が遅くても画面が即出る。
 // ＋ Web Push受信（本文はGASの notifyfeed から取得してロック画面に表示）
-const V = 'zemi-v12';
+const V = 'zemi-v13';
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -17,6 +17,21 @@ self.addEventListener('fetch', e => {
   if (url.includes('script.google.com') || url.includes('fonts.googleapis.com') || url.includes('fonts.gstatic.com')) return;
   // 同一オリジンのみキャッシュ対象
   if (new URL(url).origin !== self.location.origin) return;
+  const path = new URL(url).pathname;
+  const isHTML = e.request.mode === 'navigate' || path.endsWith('/') || path.endsWith('/index.html');
+  if (isHTML) {
+    // HTMLはネットワーク優先＝アプリを直したら次に開いた時に自動で最新になる（オフライン時はキャッシュ）。
+    // 予定・やること等のデータは localStorage / スプレッドシート側なのでこの更新では消えない。
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const copy = res.clone();
+        caches.open(V).then(c => c.put(e.request, copy));
+        return res;
+      }).catch(() => caches.match(e.request).then(h => h || caches.match('./index.html')))
+    );
+    return;
+  }
+  // アイコン等の静的ファイルはキャッシュ優先（速い）
   e.respondWith(
     caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
       const copy = res.clone();

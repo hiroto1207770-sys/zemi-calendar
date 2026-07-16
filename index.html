@@ -542,8 +542,10 @@ if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON
 CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:''}:{name:m.name||'',birthday:m.birthday||''}).filter(m=>m.name);
 LS.set('cfg',CFG);
 let ME = LS.get('me', '');
-let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者を除く）
+let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（全員／管理者パスワードで解除）
 const ADMIN = 'ひろと';                     // 管理者：AIキー・メンバー管理は管理者のみ
+const ADMIN_PASS = '1270';                 // 「ひろと」を選ぶ／名前ロックを解除するときのパスワード
+let _adminUnlocked = false;                // このセッションで管理者パスワードを通したか
 const isAdmin = () => ME===ADMIN || (!CFG.url && !ME); // 共有前のセットアップ中は制限なし
 const dispName = name => name;
 // テーマ（ライト/ダーク/自動）
@@ -1297,10 +1299,15 @@ $('#c_icscopy').onclick=()=>{ const u=$('#c_ics').value; if(!u){toast('共有(UR
 function openCfg(){
   memEdit=CFG.members.map(m=>({...m}));
   refreshMeOptions(); renderMemList(); paintTheme();
-  // 名前は一度選ぶと固定（管理者だけは変更できる）
-  const locked=ME_LOCKED&&!!ME&&ME!==ADMIN;
+  // 名前は一度選ぶと固定（管理者も含め全員）。変更は管理者パスワードで解除。
+  const locked=ME_LOCKED&&!!ME;
   $('#c_me').disabled=locked;
-  $('#c_mehelp').textContent=locked?`「${ME}」として利用中（変更できません）`:'一度選ぶと変更できません。自分の名前を選んでください。';
+  if(locked){
+    $('#c_mehelp').innerHTML=`「${esc(ME)}」として利用中（変更できません）　<button type="button" id="c_meunlock" style="background:none;border:none;color:#a9884f;text-decoration:underline;cursor:pointer;font-size:12px;padding:0">名前を変更（管理者）</button>`;
+    const b=$('#c_meunlock'); if(b) b.onclick=()=>{ const p=prompt('名前ロックを解除します。管理者パスワードを入力してください'); if(p===ADMIN_PASS){ _adminUnlocked=true; $('#c_me').disabled=false; $('#c_mehelp').textContent='名前を選び直せます（保存で確定）。'; } else if(p!==null){ toast('パスワードが違います'); } };
+  } else {
+    $('#c_mehelp').textContent='一度選ぶと変更できません。自分の名前を選んでください。';
+  }
   // 管理者以外にはメンバー管理・AI設定を出さない
   $('#adminWrap').style.display=isAdmin()?'':'none';
   $('#c_url').value=CFG.url;
@@ -1348,7 +1355,11 @@ $('#cfgOk').onclick=async()=>{
   }
   const chosen=$('#c_me').value;
   if(!$('#c_me').disabled && chosen!==ME){
-    ME=chosen;
+    if(chosen===ADMIN && !_adminUnlocked){ // 管理者「ひろと」はパスワード必須（なりすまし防止）
+      const p=prompt('「'+ADMIN+'」は管理者です。パスワードを入力してください');
+      if(p!==ADMIN_PASS){ if(p!==null)toast('パスワードが違います'); return; }
+    }
+    ME=chosen; _adminUnlocked=false;
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now()); } // 一度選んだら固定
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:''});
@@ -1528,8 +1539,8 @@ async function boot(){
   checkRecap();
 }
 boot();
-// 省エネ：60秒ごと（画面を見ているときだけ）＋復帰時。呼び出し回数を抑えて無料枠を守る。
-setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },60000);
+// 20秒ごと（画面を見ているときだけ）＋復帰時。自分の編集は即時反映されるので、これは他人の変更の取り込み用。
+setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },20000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); });
 window.addEventListener('online',syncNow);
 window.addEventListener('focus',()=>{ if(CFG.url)flush(); });
