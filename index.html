@@ -1560,8 +1560,17 @@ async function syncNow(){
   await flush(); if(syncState==='busy')return;
   setSync('busy');
   try{ const remote=await API.load(); if(remote&&remote.projects){DB=migrate(mergeInto(DB,remote));LS.set('db',DB);} applyMeta(remote); setSync('ok'); render(); }
-  catch(e){ console.warn('読み込み失敗',e); setSync('err'); }
+  catch(e){
+    console.warn('読み込み失敗',e); setSync('err');
+    if(String(e.message)==='unauthorized' && !_keyPrompting){ // 合言葉が必要／間違っている → 入力を促す
+      _keyPrompting=true;
+      const k=prompt('このゼミの「合言葉」を入力してください（みんなに配られた合言葉です）');
+      _keyPrompting=false;
+      if(k!==null && k.trim()){ CFG.appKey=k.trim(); LS.set('cfg',CFG); syncNow(); }
+    }
+  }
 }
+let _keyPrompting=false;
 async function boot(){
   applyLogo();
   render();
