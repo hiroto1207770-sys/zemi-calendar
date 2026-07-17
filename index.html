@@ -117,7 +117,7 @@ button.teamline:active{opacity:.6}
 .dow span{text-align:center;font-size:10px;font-weight:700;color:var(--faint);padding:8px 0;letter-spacing:.12em}
 .dow span:nth-child(1){color:#b4655c}.dow span:nth-child(7){color:#6a7f95}
 .days{display:grid;grid-template-columns:repeat(7,1fr)}
-.day{min-height:64px;border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:5px 3px 3px;display:flex;flex-direction:column;gap:2px;position:relative;background:var(--card);text-align:left;align-items:stretch}
+.day{height:84px;box-sizing:border-box;overflow:hidden;border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:5px 3px 3px;display:flex;flex-direction:column;gap:2px;position:relative;background:var(--card);text-align:left;align-items:stretch}
 .day:nth-child(7n){border-right:none}
 .day.out{background:var(--card-3)}
 .day .n{font-size:11px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;padding-left:3px}
@@ -1446,18 +1446,14 @@ $('#cfgOk').onclick=async()=>{
     ME=chosen; _adminUnlocked=false;
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now()); } // 一度選んだら固定
   }
-  // 本名の予約＋表示名の登録（サーバ共有）。既に他の端末が使っている本名なら中断。
+  // 本名の予約＋表示名の登録（サーバ共有）。同じ人の複数端末はOK（他端末使用中の確認は上で済み）。
   if(ME&&CFG.url){
     const disp=$('#c_disp').disabled?(DISPLAY[ME]||''):$('#c_disp').value.trim();
     try{
       const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,admin:isAdmin()});
       if(r&&r.claims){CLAIMS=r.claims;LS.set('claims',CLAIMS);}
       if(r&&r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
-      if(r&&r.taken){
-        toast('「'+ME+'」は別の人が使用中です。別の名前を選んでください');
-        ME='';ME_LOCKED=false;LS.set('me','');LS.set('meLocked',false);
-        refreshMeOptions(); return; // 設定は開いたまま、選び直し
-      }
+      // ※旧サーバの taken 応答は無視（複数端末を許可）。サーバ再デプロイ後は端末IDが配列で登録される。
     }catch(e){ /* オフライン等は後続同期でリトライ */ }
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:''});
