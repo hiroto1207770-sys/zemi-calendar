@@ -496,6 +496,7 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
 
   <div id="adminWrap" hidden>
     <div class="sec" style="margin-top:18px">管理者メニュー</div>
+    <p class="help" id="c_adminwho"></p>
     <label>メンバー（🎂誕生日をカレンダー表示・🔓で名前ロック解除）</label>
     <div id="c_memlist"></div>
     <div class="row" style="margin-top:6px"><input id="c_memadd" placeholder="名前を入力して追加"><button type="button" class="no" id="c_memaddbtn" style="flex:0 0 auto;padding:0 16px">追加</button></div>
@@ -556,9 +557,11 @@ LS.set('cfg',CFG);
 let ME = LS.get('me', '');
 let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者パスワードで解除）
 let ADMIN_PASS = (CFG.adminPass||'1270');  // 管理者パスワード（サーバのmetaで全員共有・変更可。既定1270）
+let ADMIN_NAME = (CFG.adminName||'');       // 管理者にできる本名（metaで共有）。空=未登録（最初にパス解錠した人が自動登録）
 let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
 let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
-const isAdmin = () => ADMIN_OK || (!CFG.url && !ME); // 名前ではなく「管理者パス」で判定（名前を変えても管理機能が消えない）
+// 管理者＝「登録された本名(ADMIN_NAME)」かつ「この端末でパス解錠済み」。未登録の間だけ、名前を選んだ人がパスで登録できる。
+const isAdmin = () => (!CFG.url && !ME) || (ADMIN_OK && (ADMIN_NAME==='' || ME===ADMIN_NAME));
 let DEV = LS.get('dev',''); if(!DEV){ DEV='d'+Math.random().toString(36).slice(2)+Date.now().toString(36); LS.set('dev',DEV); } // この端末の識別子（本名の予約に使う）
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
 let CLAIMS  = LS.get('claims', {});        // 本名→端末ID（一度選ばれた本名は他の人が選べない）
@@ -1282,12 +1285,28 @@ function renderMemListRO(){
   el.innerHTML=(CFG.members||[]).map(m=>`<div class="memrow"><div class="mn">${esc(m.name)}${DISPLAY[m.name]&&DISPLAY[m.name]!==m.name?`　<span style="color:var(--muted);font-size:12px">（${esc(DISPLAY[m.name])}）</span>`:''}</div>${m.birthday?`<span style="font-size:12px;color:var(--muted)">🎂${esc(bdDisp(m.birthday))}</span>`:''}</div>`).join('')
     ||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
 }
-function paintAdmin(){ const on=isAdmin(); $('#adminWrap').hidden=!on; $('#c_adminBtn').style.display=on?'none':''; }
-$('#c_adminBtn').onclick=()=>{
+function paintAdmin(){
+  const eligible = (!CFG.url && !ME) || ME===ADMIN_NAME || (ADMIN_NAME==='' && !!ME); // この端末で管理者になれる人か
+  const on = isAdmin();
+  $('#adminWrap').hidden = !on;
+  const b=$('#c_adminBtn'); if(b) b.style.display = on ? 'none' : (eligible ? '' : 'none');
+  const w=$('#c_adminwho'); if(w) w.textContent = ADMIN_NAME
+    ? '管理者：'+ADMIN_NAME+'　※引き継ぐときは、Googleスプレッドシートの meta シートで adminname の行を消すと未登録に戻ります。'
+    : 'まだ管理者は登録されていません。あなたの名前でよければ、このまま登録されます。';
+}
+$('#c_adminBtn').onclick=async()=>{
   if(isAdmin()){ paintAdmin(); return; }
+  if(!ME){ toast('先に自分の名前を選んで保存してください'); return; }
+  if(ADMIN_NAME && ME!==ADMIN_NAME){ toast('管理者は「'+ADMIN_NAME+'」さんだけです'); return; }
   const p=prompt('管理者パスワードを入力してください'); if(p===null) return;
-  if(p===ADMIN_PASS){ ADMIN_OK=true; paintAdmin(); toast('管理者メニューを表示します'); }
-  else toast('パスワードが違います');
+  if(p!==ADMIN_PASS){ toast('パスワードが違います'); return; }
+  ADMIN_OK=true;
+  if(ADMIN_NAME===''){ // 最初にパス解錠した人を、唯一の管理者として登録
+    ADMIN_NAME=ME; CFG.adminName=ME; LS.set('cfg',CFG);
+    if(CFG.url){ try{ await apiPost({action:'setadminname',name:ME}); }catch(e){} }
+    toast('「'+ME+'」さんを管理者に登録しました（以後この人だけが管理者）');
+  } else toast('管理者メニューを表示します');
+  paintAdmin();
 };
 $('#c_admchg').onclick=async()=>{
   if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
@@ -1600,6 +1619,7 @@ function applyMeta(remote){
   if(remote.display){ DISPLAY=remote.display; LS.set('display',DISPLAY); }
   if(remote.claims){ CLAIMS=remote.claims; LS.set('claims',CLAIMS); }
   if(remote.adminpass){ ADMIN_PASS=String(remote.adminpass); CFG.adminPass=ADMIN_PASS; LS.set('cfg',CFG); } // 管理者パスはサーバが正
+  if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
   // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
   const ul=remote.unlocks||{};
   if(ME&&ME_LOCKED&&ul[ME]&&ul[ME]>LS.get('meLockedAt',0)){
