@@ -395,6 +395,7 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
   <div id="pj_teams"></div>
   <button class="addteam" id="pj_addteam">＋ チームを追加</button>
   <div class="acts"><button class="no" id="pjNo">やめる</button><button class="go" id="pjOk">保存する</button></div>
+  <div class="acts" id="pjDoneWrap" hidden style="margin-top:8px"><button class="no" id="pjDone" style="flex:1"></button></div>
   <div class="acts" id="pjDelWrap" hidden style="margin-top:8px"><button class="no" id="pjDel" style="color:var(--warn);border-color:#e6cbc4">このプロジェクトを削除</button></div>
 </div></div>
 
@@ -488,9 +489,14 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
     <div class="acts" id="pushOffWrap" hidden style="margin-top:8px"><button class="no" id="pushOff" style="flex:1">通知を止める</button></div>
   </div>
 
-  <div id="adminWrap">
-    <div class="sec" style="margin-top:22px">管理者のみ</div>
-    <label>メンバー（誕生日はカレンダーに🎂表示・🔓で名前ロック解除）</label>
+  <div class="sec" style="margin-top:22px">メンバー</div>
+  <div id="c_memlist_ro"></div>
+  <p class="help">名簿は全員が見られます。追加・削除・誕生日の編集は管理者だけができます。</p>
+  <div class="acts" style="margin-top:8px"><button type="button" class="no" id="c_adminBtn" style="flex:1">🔑 管理者メニュー</button></div>
+
+  <div id="adminWrap" hidden>
+    <div class="sec" style="margin-top:18px">管理者メニュー</div>
+    <label>メンバー（🎂誕生日をカレンダー表示・🔓で名前ロック解除）</label>
     <div id="c_memlist"></div>
     <div class="row" style="margin-top:6px"><input id="c_memadd" placeholder="名前を入力して追加"><button type="button" class="no" id="c_memaddbtn" style="flex:0 0 auto;padding:0 16px">追加</button></div>
     <label>AI（Gemini APIキー）</label>
@@ -504,6 +510,9 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
       <option value="gemini-1.5-flash">gemini-1.5-flash</option>
       <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b</option>
     </select>
+    <label>管理者パスワードを変更</label>
+    <div class="row"><input id="c_admnew" type="text" inputmode="numeric" placeholder="新しい管理者パスワード"><button type="button" class="no" id="c_admchg" style="flex:0 0 auto;padding:0 16px">変更</button></div>
+    <p class="help">変更には今のパスワードが必要です。<b>忘れたとき</b>は、Googleスプレッドシートの「meta」シートで <b>key が adminpass</b> の行を削除すると、次の同期で <b>1270</b> に戻ります。</p>
   </div>
 
   <div class="sec" style="margin-top:22px">外観・データ</div>
@@ -545,11 +554,11 @@ if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON
 CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:''}:{name:m.name||'',birthday:m.birthday||''}).filter(m=>m.name);
 LS.set('cfg',CFG);
 let ME = LS.get('me', '');
-let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（全員／管理者パスワードで解除）
-const ADMIN = 'ひろと';                     // 管理者：AIキー・メンバー管理は管理者のみ
-const ADMIN_PASS = '1270';                 // 「ひろと」を選ぶ／名前ロックを解除するときのパスワード
-let _adminUnlocked = false;                // このセッションで管理者パスワードを通したか
-const isAdmin = () => ME===ADMIN || (!CFG.url && !ME); // 共有前のセットアップ中は制限なし
+let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者パスワードで解除）
+let ADMIN_PASS = (CFG.adminPass||'1270');  // 管理者パスワード（サーバのmetaで全員共有・変更可。既定1270）
+let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
+let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
+const isAdmin = () => ADMIN_OK || (!CFG.url && !ME); // 名前ではなく「管理者パス」で判定（名前を変えても管理機能が消えない）
 let DEV = LS.get('dev',''); if(!DEV){ DEV='d'+Math.random().toString(36).slice(2)+Date.now().toString(36); LS.set('dev',DEV); } // この端末の識別子（本名の予約に使う）
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
 let CLAIMS  = LS.get('claims', {});        // 本名→端末ID（一度選ばれた本名は他の人が選べない）
@@ -610,7 +619,7 @@ function migrate(db){
   db.projects=(db.projects||[]).map((p,pi)=>{
     let teams=Array.isArray(p.teams)?p.teams:[];
     teams=teams.map((tm,i)=> typeof tm==='string' ? {name:tm,color:COLORS[i%COLORS.length],members:[]} : {name:tm.name||'',color:tm.color||COLORS[i%COLORS.length],members:Array.isArray(tm.members)?tm.members:[]});
-    return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,...p,teams};
+    return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams};
   });
   db.items=(db.items||[]).map(i=>({
     who:[],team:'',other:'',visibility:'all',important:false,note:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',createdBy:'',updatedAt:t,deleted:false,...i,
@@ -649,6 +658,7 @@ let syncState='off',pending=[];
 const $=s=>document.querySelector(s);
 const pj=id=>(DB.projects.find(p=>p.id===id&&!p.deleted))||{name:'—',color:'#aba393',teams:[]};
 const liveProjects=()=>DB.projects.filter(p=>!p.deleted);
+const activeProjects=()=>DB.projects.filter(p=>!p.deleted&&!p.done); // 進行中のみ（予定の登録先・フィルタ・進捗はこちら）
 const liveItems=()=>DB.items.filter(i=>!i.deleted);
 const dleft=d=>Math.round((new Date(d+'T00:00')-new Date(TODAY+'T00:00'))/86400000);
 const isMine=i=>ME&&i.who&&i.who.includes(ME);
@@ -706,7 +716,7 @@ function renderFilters(){
   const f=$('#filters');
   const showMine=view!=='pj'&&ME;
   let h=`<button class="chip ${!filter?'on':''}" data-p="">すべて</button>`+
-    liveProjects().map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
+    activeProjects().map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
   const fp=filter?pj(filter):null;
   if(fp&&fp.teams&&fp.teams.length){
     h+=`<span class="fsep"></span>`+fp.teams.map(t=>`<button class="chip team ${teamFilter===t.name?'on':''}" data-team="${esc(t.name)}" style="${teamFilter===t.name?`background:${t.color};border-color:${t.color}`:`color:${t.color}`}">${esc(t.name)}</button>`).join('');
@@ -756,7 +766,7 @@ function renderHome(){
   h+=near.length?near.slice(0,8).map(i=>card(i)).join(''):`<div class="empty">直近の締切はありません</div>`;
   h+=`</div>`;
   h+=`<div class="homeblock"><div class="sec">プロジェクト＆係の進み具合</div>`;
-  h+=liveProjects().map(p=>progRow(p)).join('')||`<div class="empty">プロジェクト＆係がありません</div>`;
+  h+=activeProjects().map(p=>progRow(p)).join('')||`<div class="empty">プロジェクト＆係がありません</div>`;
   h+=`</div>`;
   el.innerHTML=h;
   $('#tAI').onclick=openAI;
@@ -852,8 +862,12 @@ function renderTodo(){
   bind('#todoList');
 }
 function renderPj(){
-  $('#pjList').innerHTML=liveProjects().map(p=>progRow(p,true)).join('')
+  const done=liveProjects().filter(p=>p.done);
+  let h=activeProjects().map(p=>progRow(p,true)).join('')
     +`<button class="empty" id="addPj" style="width:100%;font-weight:600;color:var(--ink)">＋ プロジェクト＆係を追加する</button>`;
+  if(done.length) h+=`<div class="sec" style="margin-top:20px;opacity:.7">✓ 完了済みプロジェクト（${done.length}）</div>`
+    +`<div style="opacity:.62">`+done.map(p=>progRow(p,true)).join('')+`</div>`;
+  $('#pjList').innerHTML=h;
   $('#addPj').onclick=()=>openPjSheet(null);
   document.querySelectorAll('[data-editpj]').forEach(b=>b.onclick=e=>{e.stopPropagation();openPjSheet(b.dataset.editpj);});
   document.querySelectorAll('[data-tteam]').forEach(b=>b.onclick=()=>{
@@ -970,7 +984,9 @@ function openSheet(id){
   editing=id?DB.items.find(i=>i.id===id):null;
   $('#sheetTitle').textContent=editing?'なおす':'追加する';
   $('#delWrap').hidden=!editing;
-  $('#f_pj').innerHTML=liveProjects().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')+`<option value="__other__">その他（プロジェクトなし・自由入力）</option>`;
+  const pjOpts=activeProjects();
+  if(editing&&editing.pj&&!pjOpts.some(p=>p.id===editing.pj)){ const ep=DB.projects.find(p=>p.id===editing.pj&&!p.deleted); if(ep)pjOpts.unshift(ep); } // 編集中の予定が完了済み案件に属していても選べるように
+  $('#f_pj').innerHTML=pjOpts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.done?'（完了済み）':''}</option>`).join('')+`<option value="__other__">その他（プロジェクトなし・自由入力）</option>`;
   fillWho();
   $('#f_pj').value=editing?(editing.pj||'__other__'):(filter||liveProjects()[0]?.id);
   $('#f_other').value=editing?.other||'';
@@ -1038,6 +1054,8 @@ function openPjSheet(id){
   pjEditing=id?DB.projects.find(p=>p.id===id):null;
   $('#pjsheetTitle').textContent=pjEditing?'プロジェクト＆係をなおす':'プロジェクト＆係を追加';
   $('#pjDelWrap').hidden=!pjEditing;
+  $('#pjDoneWrap').hidden=!pjEditing;
+  if(pjEditing) $('#pjDone').textContent=pjEditing.done?'↩ 進行中に戻す':'✓ このプロジェクトを完了にする';
   $('#pj_name').value=pjEditing?pjEditing.name:'';
   pjColor=pjEditing?pjEditing.color:COLORS[liveProjects().length%COLORS.length];
   pjTeams=pjEditing?pjEditing.teams.map(t=>({...t,members:[...(t.members||[])]})):[];
@@ -1085,6 +1103,15 @@ $('#pjOk').onclick=()=>{
   if(pjEditing){pjEditing.name=name;pjEditing.color=pjColor;pjEditing.teams=teams;pjEditing.updatedAt=now();id=pjEditing.id;}
   else{id='p'+now();DB.projects.push({id,name,color:pjColor,teams,updatedAt:now(),deleted:false});}
   $('#pjsheet').hidden=true;toast('プロジェクト＆係を保存しました');commit([id]);
+};
+$('#pjDone').onclick=()=>{
+  if(!pjEditing)return;
+  pjEditing.done=!pjEditing.done; pjEditing.updatedAt=now();
+  const id=pjEditing.id, nowDone=pjEditing.done;
+  if(nowDone&&filter===id){filter=null;teamFilter=null;}
+  $('#pjsheet').hidden=true;
+  toast(nowDone?'完了済みに移動しました（カレンダーの予定はそのまま残ります）':'進行中に戻しました');
+  commit([id]);
 };
 $('#pjDel').onclick=()=>{
   if(!pjEditing)return;
@@ -1240,14 +1267,37 @@ async function askAI(){
 
 /* ============================================================ 設定 */
 let memEdit=[];
+const claimDevs=name=>{ const c=CLAIMS[name]; return Array.isArray(c)?c:(c?[c]:[]); }; // 本名→端末IDの配列（旧・文字列形式も配列化）
 function refreshMeOptions(){
-  // 別の端末が既に予約した本名は選べないようにする（自分の名前は残す）
+  // 同じ人の複数端末を許可：他端末が使っていても選べる（保存時に本人確認の確認だけ出す）
   $('#c_me').innerHTML=`<option value="">（未設定）</option>`+memEdit.map(m=>{
-    const taken = CLAIMS[m.name] && CLAIMS[m.name]!==DEV && m.name!==ME;
+    const devs=claimDevs(m.name), mine=devs.includes(DEV), others=devs.filter(d=>d!==DEV).length;
     const disp = DISPLAY[m.name] && DISPLAY[m.name]!==m.name ? `（${esc(DISPLAY[m.name])}）` : '';
-    return `<option value="${esc(m.name)}" ${m.name===ME?'selected':''} ${taken?'disabled':''}>${esc(m.name)}${disp}${taken?' — 使用中':''}</option>`;
+    const mark = mine ? ' — この端末' : (others ? ' — 他の端末で使用中' : '');
+    return `<option value="${esc(m.name)}" ${m.name===ME?'selected':''}>${esc(m.name)}${disp}${mark}</option>`;
   }).join('');
 }
+function renderMemListRO(){
+  const el=$('#c_memlist_ro'); if(!el) return;
+  el.innerHTML=(CFG.members||[]).map(m=>`<div class="memrow"><div class="mn">${esc(m.name)}${DISPLAY[m.name]&&DISPLAY[m.name]!==m.name?`　<span style="color:var(--muted);font-size:12px">（${esc(DISPLAY[m.name])}）</span>`:''}</div>${m.birthday?`<span style="font-size:12px;color:var(--muted)">🎂${esc(bdDisp(m.birthday))}</span>`:''}</div>`).join('')
+    ||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
+}
+function paintAdmin(){ const on=isAdmin(); $('#adminWrap').hidden=!on; $('#c_adminBtn').style.display=on?'none':''; }
+$('#c_adminBtn').onclick=()=>{
+  if(isAdmin()){ paintAdmin(); return; }
+  const p=prompt('管理者パスワードを入力してください'); if(p===null) return;
+  if(p===ADMIN_PASS){ ADMIN_OK=true; paintAdmin(); toast('管理者メニューを表示します'); }
+  else toast('パスワードが違います');
+};
+$('#c_admchg').onclick=async()=>{
+  if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
+  const nv=$('#c_admnew').value.trim(); if(!nv){ toast('新しいパスワードを入力してください'); return; }
+  const cur=prompt('確認のため、今の管理者パスワードを入力してください'); if(cur===null) return;
+  if(cur!==ADMIN_PASS){ toast('今のパスワードが違います'); return; }
+  ADMIN_PASS=nv; CFG.adminPass=nv; LS.set('cfg',CFG); $('#c_admnew').value='';
+  if(CFG.url){ try{ await apiPost({action:'setadminpass',pass:nv}); toast('管理者パスワードを変更しました（全員に反映）'); }catch(e){ toast('保存に失敗：'+e.message); } }
+  else toast('管理者パスワードを変更しました（この端末のみ）');
+};
 function parseBd(v){ // 「7/16」「7-16」→ 'MM-DD'。空・不正は ''
   const m=String(v||'').trim().match(/^(\d{1,2})[\/\-月](\d{1,2})日?$/);
   if(!m) return '';
@@ -1322,8 +1372,8 @@ function openCfg(){
   } else {
     $('#c_mehelp').textContent='一度選ぶと変更できません。自分の名前を選んでください。';
   }
-  // 管理者以外にはメンバー管理・AI設定を出さない
-  $('#adminWrap').style.display=isAdmin()?'':'none';
+  // 名簿は全員に表示。管理メニュー（追加・削除・AIキー・パス変更）は管理者パスで解錠したときだけ。
+  renderMemListRO(); paintAdmin();
   $('#c_url').value=CFG.url;
   $('#c_keyon').checked=!!CFG.appKey; $('#c_keywrap').hidden=!CFG.appKey; $('#c_key').value=CFG.appKey||'';
   $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'gemini-2.0-flash';
@@ -1369,9 +1419,10 @@ $('#cfgOk').onclick=async()=>{
   }
   const chosen=$('#c_me').value;
   if(!$('#c_me').disabled && chosen!==ME){
-    if(chosen===ADMIN && !_adminUnlocked){ // 管理者「ひろと」はパスワード必須（なりすまし防止）
-      const p=prompt('「'+ADMIN+'」は管理者です。パスワードを入力してください');
-      if(p!==ADMIN_PASS){ if(p!==null)toast('パスワードが違います'); return; }
+    // 別の端末が同じ本名を使っている場合だけ「自分の別端末か」を確認（同じ人の複数端末を許可）
+    if(chosen && CFG.url){
+      const others=claimDevs(chosen).filter(d=>d!==DEV);
+      if(others.length && !confirm('「'+chosen+'」は他の端末でも使われています。\nあなた自身の別の端末（スマホ・タブレット等）ですか？\n\nOK＝この端末も同じ人として使います')) return;
     }
     ME=chosen; _adminUnlocked=false;
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now()); } // 一度選んだら固定
@@ -1399,7 +1450,7 @@ $('#cfgOk').onclick=async()=>{
 /* ============================================================ まとめて追加（年間予定など） */
 $('#c_bulk').onclick=openBulk;
 function openBulk(){
-  $('#bk_pj').innerHTML=liveProjects().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')+`<option value="__other__">その他（自由入力）</option>`;
+  $('#bk_pj').innerHTML=activeProjects().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')+`<option value="__other__">その他（自由入力）</option>`;
   $('#bk_pj').onchange=()=>{ $('#bk_other').hidden=$('#bk_pj').value!=='__other__'; };
   $('#bk_other').hidden=$('#bk_pj').value!=='__other__';
   $('#bk_year').value=new Date().getFullYear();
@@ -1548,6 +1599,7 @@ function applyMeta(remote){
   // 表示名（本名→表示名）と本名の予約状況はサーバが正
   if(remote.display){ DISPLAY=remote.display; LS.set('display',DISPLAY); }
   if(remote.claims){ CLAIMS=remote.claims; LS.set('claims',CLAIMS); }
+  if(remote.adminpass){ ADMIN_PASS=String(remote.adminpass); CFG.adminPass=ADMIN_PASS; LS.set('cfg',CFG); } // 管理者パスはサーバが正
   // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
   const ul=remote.unlocks||{};
   if(ME&&ME_LOCKED&&ul[ME]&&ul[ME]>LS.get('meLockedAt',0)){
