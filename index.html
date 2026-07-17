@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -131,6 +131,7 @@ button.teamline:active{opacity:.6}
 .pill.ev{background:transparent!important;color:var(--ink)!important;padding-left:11px;position:relative;font-weight:600}
 .pill.ev::before{content:"";position:absolute;left:3px;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:var(--pc,#999)}
 .more{font-size:9px;color:var(--faint);padding-left:4px;font-weight:600}
+.pjmem{font-size:11px;color:var(--muted);margin:1px 0 5px 17px;line-height:1.5}
 
 .panel{margin-top:18px}
 .item{display:flex;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px 12px 15px;margin-bottom:9px;align-items:flex-start;position:relative;overflow:hidden;box-shadow:var(--sh-s)}
@@ -391,9 +392,13 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
   <input id="pj_name" placeholder="例：BranCo!・会計係">
   <label>色</label>
   <div class="swatches" id="pj_colors"></div>
-  <label>チーム（色分けできます）</label>
-  <div id="pj_teams"></div>
-  <button class="addteam" id="pj_addteam">＋ チームを追加</button>
+  <label>担当メンバー（タップで選ぶ・係の人）</label>
+  <div class="whopick" id="pj_members"></div>
+  <button class="addteam" id="pj_teamtoggle" style="margin-top:10px">▽ チーム分け（班に分けたいときだけ）</button>
+  <div id="pj_teamwrap" hidden>
+    <div id="pj_teams"></div>
+    <button class="addteam" id="pj_addteam">＋ チームを追加</button>
+  </div>
   <div class="acts"><button class="no" id="pjNo">やめる</button><button class="go" id="pjOk">保存する</button></div>
   <div class="acts" id="pjDoneWrap" hidden style="margin-top:8px"><button class="no" id="pjDone" style="flex:1"></button></div>
   <div class="acts" id="pjDelWrap" hidden style="margin-top:8px"><button class="no" id="pjDel" style="color:var(--warn);border-color:#e6cbc4">このプロジェクトを削除</button></div>
@@ -567,7 +572,8 @@ let _adminUnlocked = false;                 // 名前ロック解除など一時
 const isAdmin = () => (!CFG.url && !ME) || (ADMIN_OK && (ADMIN_NAME==='' || ME===ADMIN_NAME));
 let DEV = LS.get('dev',''); if(!DEV){ DEV='d'+Math.random().toString(36).slice(2)+Date.now().toString(36); LS.set('dev',DEV); } // この端末の識別子（本名の予約に使う）
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
-let CLAIMS  = LS.get('claims', {});        // 本名→端末ID（一度選ばれた本名は他の人が選べない）
+let CLAIMS  = LS.get('claims', {});        // 本名→端末IDの配列（同じ人の複数端末を許可）
+let PINSET  = LS.get('pinset', {});        // 本名→暗証番号が設定済みか(true/false)。番号そのものはサーバのみが知る
 const dispName = name => (DISPLAY[name]||name); // カレンダー等に出す名前は表示名（未設定なら本名）
 // テーマ（ライト/ダーク/自動）
 function applyTheme(){
@@ -625,7 +631,7 @@ function migrate(db){
   db.projects=(db.projects||[]).map((p,pi)=>{
     let teams=Array.isArray(p.teams)?p.teams:[];
     teams=teams.map((tm,i)=> typeof tm==='string' ? {name:tm,color:COLORS[i%COLORS.length],members:[]} : {name:tm.name||'',color:tm.color||COLORS[i%COLORS.length],members:Array.isArray(tm.members)?tm.members:[]});
-    return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams};
+    return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams,members:Array.isArray(p.members)?p.members:[]};
   });
   db.items=(db.items||[]).map(i=>({
     who:[],team:'',other:'',visibility:'all',important:false,note:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',createdBy:'',updatedAt:t,deleted:false,...i,
@@ -810,10 +816,11 @@ function progRow(p,withActions){
       +((und.length||dn.length)?'':`<div class="sub">タスクはまだありません</div>`)
       +`</div>`;
   }
+  const memHtml=(p.members&&p.members.length)?`<div class="pjmem">👥 ${p.members.map(n=>esc(dispName(n))).join('・')}</div>`:'';
   return `<div class="prog-row">
     <div class="top"><span class="dot" style="width:9px;height:9px;border-radius:50%;background:${p.color};display:inline-block"></span>
       <b class="mincho">${esc(p.name)}</b><span style="flex:1"></span>${acts}<button class="pctbtn" data-prog="${p.id}">${pct}%<span class="car">${open?'▲':'▼'}</span></button></div>
-    <div class="track"><div style="width:${pct}%;background:${p.color}"></div></div>${teamHtml}${taskHtml}</div>`;
+    ${memHtml}<div class="track"><div style="width:${pct}%;background:${p.color}"></div></div>${teamHtml}${taskHtml}</div>`;
 }
 function bindProg(sc){
   document.querySelectorAll(sc+' [data-prog]').forEach(b=>b.onclick=()=>{ openProg=openProg===b.dataset.prog?null:b.dataset.prog; render(); });
@@ -1054,7 +1061,7 @@ $('#save').onclick=()=>{
 $('#del').onclick=()=>{ if(!confirm('削除します'))return; editing.deleted=true;editing.updatedAt=now();const id=editing.id;$('#sheet').hidden=true;toast('削除しました');commit([id]); };
 
 /* ============================================================ 案件編集シート */
-let pjEditing=null,pjColor=COLORS[0],pjTeams=[];
+let pjEditing=null,pjColor=COLORS[0],pjTeams=[],pjMembers=[];
 function swatchRow(sel,cb){ return COLORS.map(c=>`<div class="sw ${c===sel?'on':''}" style="background:${c}" data-c="${c}"></div>`).join(''); }
 function openPjSheet(id){
   pjEditing=id?DB.projects.find(p=>p.id===id):null;
@@ -1065,12 +1072,31 @@ function openPjSheet(id){
   $('#pj_name').value=pjEditing?pjEditing.name:'';
   pjColor=pjEditing?pjEditing.color:COLORS[liveProjects().length%COLORS.length];
   pjTeams=pjEditing?pjEditing.teams.map(t=>({...t,members:[...(t.members||[])]})):[];
+  pjMembers=pjEditing?[...(pjEditing.members||[])]:[];
   pjTeamOpen=-1;
+  // チーム分けは普段は隠す（使っているプロジェクトだけ最初から開く）
+  $('#pj_teamwrap').hidden=!pjTeams.length;
+  paintPjTeamToggle();
   $('#pj_colors').innerHTML=swatchRow(pjColor);
   $('#pj_colors').querySelectorAll('.sw').forEach(s=>s.onclick=()=>{pjColor=s.dataset.c;$('#pj_colors').innerHTML=swatchRow(pjColor);bindColorRow('#pj_colors',()=>pjColor,v=>pjColor=v);});
   bindColorRow('#pj_colors',()=>pjColor,v=>pjColor=v);
+  renderPjMembers();
   renderPjTeams();
   $('#pjsheet').hidden=false;
+}
+function paintPjTeamToggle(){
+  const open=!$('#pj_teamwrap').hidden;
+  $('#pj_teamtoggle').textContent=(open?'△ チーム分けを隠す':'▽ チーム分け（班に分けたいときだけ）');
+}
+$('#pj_teamtoggle').onclick=()=>{ $('#pj_teamwrap').hidden=!$('#pj_teamwrap').hidden; paintPjTeamToggle(); };
+function renderPjMembers(){
+  $('#pj_members').innerHTML=CFG.members.map(m=>`<button type="button" data-pm="${esc(m.name)}" class="${pjMembers.includes(m.name)?'on':''}">${esc(dispName(m.name))}</button>`).join('')
+    ||`<span style="font-size:12px;color:var(--faint)">メンバー未登録（設定から）</span>`;
+  $('#pj_members').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    const n=b.dataset.pm,k=pjMembers.indexOf(n);
+    if(k<0)pjMembers.push(n);else pjMembers.splice(k,1);
+    b.classList.toggle('on',pjMembers.includes(n));
+  });
 }
 function bindColorRow(sc,get,set){
   document.querySelectorAll(sc+' .sw').forEach(s=>s.onclick=()=>{set(s.dataset.c);document.querySelector(sc).innerHTML=swatchRow(get());bindColorRow(sc,get,set);});
@@ -1104,10 +1130,12 @@ $('#pjNo').onclick=()=>$('#pjsheet').hidden=true;
 $('#pjsheet').onclick=e=>{if(e.target.id==='pjsheet')$('#pjsheet').hidden=true};
 $('#pjOk').onclick=()=>{
   const name=$('#pj_name').value.trim();if(!name){$('#pj_name').focus();return;}
+  if(pjTeams.some(t=>!t.name.trim())){ toast('名前が入っていないチームがあります（チーム名を入れるか × で消してください）'); return; }
   const teams=pjTeams.map(t=>({name:t.name.trim(),color:t.color,members:(t.members||[]).filter(n=>CFG.members.some(m=>m.name===n))})).filter(t=>t.name);
+  const members=pjMembers.filter(n=>CFG.members.some(m=>m.name===n));
   let id;
-  if(pjEditing){pjEditing.name=name;pjEditing.color=pjColor;pjEditing.teams=teams;pjEditing.updatedAt=now();id=pjEditing.id;}
-  else{id='p'+now();DB.projects.push({id,name,color:pjColor,teams,updatedAt:now(),deleted:false});}
+  if(pjEditing){pjEditing.name=name;pjEditing.color=pjColor;pjEditing.teams=teams;pjEditing.members=members;pjEditing.updatedAt=now();id=pjEditing.id;}
+  else{id='p'+now();DB.projects.push({id,name,color:pjColor,teams,members,updatedAt:now(),deleted:false,done:false});}
   $('#pjsheet').hidden=true;toast('プロジェクト＆係を保存しました');commit([id]);
 };
 $('#pjDone').onclick=()=>{
@@ -1447,23 +1475,30 @@ $('#cfgOk').onclick=async()=>{
     CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||''})).filter(m=>m.name);
   }
   const chosen=$('#c_me').value;
-  if(!$('#c_me').disabled && chosen!==ME){
-    // 別の端末が同じ本名を使っている場合だけ「自分の別端末か」を確認（同じ人の複数端末を許可）
-    if(chosen && CFG.url){
-      const others=claimDevs(chosen).filter(d=>d!==DEV);
-      if(others.length && !confirm('「'+chosen+'」は他の端末でも使われています。\nあなた自身の別の端末（スマホ・タブレット等）ですか？\n\nOK＝この端末も同じ人として使います')) return;
-    }
+  const nameChanged=!$('#c_me').disabled && chosen!==ME;
+  if(nameChanged){
     ME=chosen; _adminUnlocked=false;
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now()); } // 一度選んだら固定
   }
-  // 本名の予約＋表示名の登録（サーバ共有）。同じ人の複数端末はOK（他端末使用中の確認は上で済み）。
+  // 本名の予約＋表示名の登録（サーバ共有）。
+  // 本人確認＝各自の「暗証番号」。初めて選んだ人がその場で決め、以後どの端末でも同じ番号で入れる（他人は入れない）。
   if(ME&&CFG.url){
+    const revert=()=>{ ME=''; ME_LOCKED=false; LS.set('me',''); LS.set('meLocked',false); refreshMeOptions(); };
+    let pin='';
+    if(!claimDevs(ME).includes(DEV)){ // この端末でまだ本人確認が済んでいないときだけ聞く
+      pin=PINSET[ME]
+        ? prompt('「'+dispName(ME)+'」の暗証番号を入力してください（本人確認）')
+        : prompt('「'+dispName(ME)+'」の暗証番号を決めてください（例：数字4桁）\n自分のiPhone・iPad・PCで入るときの本人確認に使います。他の人には教えないでください');
+      if(pin===null||!pin.trim()){ if(nameChanged)revert(); return; }
+      pin=pin.trim();
+    }
     const disp=$('#c_disp').disabled?(DISPLAY[ME]||''):$('#c_disp').value.trim();
     try{
-      const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,admin:isAdmin()});
+      const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,pin,admin:isAdmin()});
+      if(r&&r.badpin){ toast('暗証番号が違います。本人でなければこの名前は選べません'); revert(); return; }
       if(r&&r.claims){CLAIMS=r.claims;LS.set('claims',CLAIMS);}
       if(r&&r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
-      // ※旧サーバの taken 応答は無視（複数端末を許可）。サーバ再デプロイ後は端末IDが配列で登録される。
+      if(r&&r.pinset){PINSET=r.pinset;LS.set('pinset',PINSET);}
     }catch(e){ /* オフライン等は後続同期でリトライ */ }
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:''});
@@ -1624,6 +1659,7 @@ function applyMeta(remote){
   // 表示名（本名→表示名）と本名の予約状況はサーバが正
   if(remote.display){ DISPLAY=remote.display; LS.set('display',DISPLAY); }
   if(remote.claims){ CLAIMS=remote.claims; LS.set('claims',CLAIMS); }
+  if(remote.pinset){ PINSET=remote.pinset; LS.set('pinset',PINSET); } // どの名前に暗証番号があるか（番号自体は来ない）
   if(remote.adminpass){ ADMIN_PASS=String(remote.adminpass); CFG.adminPass=ADMIN_PASS; LS.set('cfg',CFG); } // 管理者パスはサーバが正
   if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
   // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
@@ -1637,7 +1673,18 @@ async function syncNow(){
   if(!CFG.url){setSync('off');return;}
   await flush(); if(syncState==='busy')return;
   setSync('busy');
-  try{ const remote=await API.load(); if(remote&&remote.projects){DB=migrate(mergeInto(DB,remote));LS.set('db',DB);} applyMeta(remote); setSync('ok'); render(); }
+  try{
+    const remote=await API.load();
+    let missing=[];
+    if(remote&&remote.projects){
+      // サーバに無いローカル分を洗い出して送る（初期データや同期漏れの自己修復。端末ごとに内容が違う問題を解消）
+      const rp=new Set(remote.projects.map(p=>p.id)), ri=new Set((remote.items||[]).map(i=>i.id));
+      missing=[...DB.projects.filter(p=>!rp.has(p.id)),...DB.items.filter(i=>!ri.has(i.id))].map(x=>x.id);
+      DB=migrate(mergeInto(DB,remote));LS.set('db',DB);
+    }
+    applyMeta(remote); setSync('ok'); render();
+    if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
+  }
   catch(e){
     console.warn('読み込み失敗',e); setSync('err');
     if(String(e.message)==='unauthorized' && !_keyPrompting){ // 合言葉が必要／間違っている → 入力を促す
