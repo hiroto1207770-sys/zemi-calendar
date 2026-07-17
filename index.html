@@ -514,6 +514,9 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
     <label>管理者パスワードを変更</label>
     <div class="row"><input id="c_admnew" type="text" inputmode="numeric" placeholder="新しい管理者パスワード"><button type="button" class="no" id="c_admchg" style="flex:0 0 auto;padding:0 16px">変更</button></div>
     <p class="help">変更には今のパスワードが必要です。<b>忘れたとき</b>は、Googleスプレッドシートの「meta」シートで <b>key が adminpass</b> の行を削除すると、次の同期で <b>1270</b> に戻ります。</p>
+    <label>管理者の引き継ぎ</label>
+    <button type="button" class="no" id="c_adminhandoff" style="width:100%">管理者の登録を解除する</button>
+    <p class="help">機種変更では<b>不要</b>です（新しい端末で自分の名前＋パスを入れるだけ）。別の人に管理者を代わってもらうときだけ押してください。押すと未登録に戻り、次にパスを入れた人が管理者になります。</p>
   </div>
 
   <div class="sec" style="margin-top:22px">外観・データ</div>
@@ -1291,13 +1294,13 @@ function paintAdmin(){
   $('#adminWrap').hidden = !on;
   const b=$('#c_adminBtn'); if(b) b.style.display = on ? 'none' : (eligible ? '' : 'none');
   const w=$('#c_adminwho'); if(w) w.textContent = ADMIN_NAME
-    ? '管理者：'+ADMIN_NAME+'　※引き継ぐときは、Googleスプレッドシートの meta シートで adminname の行を消すと未登録に戻ります。'
-    : 'まだ管理者は登録されていません。あなたの名前でよければ、このまま登録されます。';
+    ? 'この端末で管理者メニューを使えます。機種変更しても、新しい端末で自分の名前とパスを入れるだけで引き継げます（特別な操作は不要）。'
+    : 'この端末を管理者として登録します（最初に登録した人だけが管理者になります）。';
 }
 $('#c_adminBtn').onclick=async()=>{
   if(isAdmin()){ paintAdmin(); return; }
   if(!ME){ toast('先に自分の名前を選んで保存してください'); return; }
-  if(ADMIN_NAME && ME!==ADMIN_NAME){ toast('管理者は「'+ADMIN_NAME+'」さんだけです'); return; }
+  if(ADMIN_NAME && ME!==ADMIN_NAME){ toast('管理者だけが使えます'); return; }
   const p=prompt('管理者パスワードを入力してください'); if(p===null) return;
   if(p!==ADMIN_PASS){ toast('パスワードが違います'); return; }
   ADMIN_OK=true;
@@ -1316,6 +1319,13 @@ $('#c_admchg').onclick=async()=>{
   ADMIN_PASS=nv; CFG.adminPass=nv; LS.set('cfg',CFG); $('#c_admnew').value='';
   if(CFG.url){ try{ await apiPost({action:'setadminpass',pass:nv}); toast('管理者パスワードを変更しました（全員に反映）'); }catch(e){ toast('保存に失敗：'+e.message); } }
   else toast('管理者パスワードを変更しました（この端末のみ）');
+};
+$('#c_adminhandoff').onclick=async()=>{
+  if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
+  if(!confirm('管理者の登録を解除します。\n（機種変更では不要です）\n次に管理者パスを入れた人が新しい管理者になります。よろしいですか？')) return;
+  ADMIN_NAME=''; CFG.adminName=''; LS.set('cfg',CFG);
+  if(CFG.url){ try{ await apiPost({action:'clearadminname'}); }catch(e){} }
+  ADMIN_OK=false; paintAdmin(); toast('管理者の登録を解除しました');
 };
 function parseBd(v){ // 「7/16」「7-16」→ 'MM-DD'。空・不正は ''
   const m=String(v||'').trim().match(/^(\d{1,2})[\/\-月](\d{1,2})日?$/);
@@ -1476,7 +1486,7 @@ $('#bkNo').onclick=()=>$('#bulksheet').hidden=true;
 $('#bulksheet').onclick=e=>{if(e.target.id==='bulksheet')$('#bulksheet').hidden=true};
 /* PDF → AIで日付・内容を読み取って下の欄に入れる */
 $('#bk_pdf').onclick=()=>{
-  if(!CFG.geminiKey){ toast('管理者がAIキーを設定すると使えます'); return; }
+  if(!CFG.geminiKey){ toast('PDF読み取りにはAIキーが必要です。設定→🔑管理者メニュー→AI（Gemini APIキー）に入れてください'); return; }
   $('#bk_pdffile').click();
 };
 $('#bk_pdffile').onchange=e=>{
