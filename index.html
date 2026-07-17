@@ -132,6 +132,7 @@ button.teamline:active{opacity:.6}
 .pill.ev::before{content:"";position:absolute;left:3px;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:var(--pc,#999)}
 .more{font-size:9px;color:var(--faint);padding-left:4px;font-weight:600}
 .pjmem{font-size:11px;color:var(--muted);margin:1px 0 5px 17px;line-height:1.5}
+.teamtoggle{display:block;background:none;border:none;font-size:11px;font-weight:600;color:var(--muted);padding:5px 0 2px 17px;cursor:pointer;text-align:left}
 
 .panel{margin-top:18px}
 .item{display:flex;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px 12px 15px;margin-bottom:9px;align-items:flex-start;position:relative;overflow:hidden;box-shadow:var(--sh-s)}
@@ -364,6 +365,15 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
     </div>
     <div id="w_days" hidden><label>くり返す曜日（毎週・隔週）</label><div class="whopick" id="f_days"></div></div>
   </div>
+  <label>通知のタイミング（毎朝の通知に入れる日）</label>
+  <select id="f_remind">
+    <option value="">標準（予定＝当日の朝／やること＝前日・当日・期限超過）</option>
+    <option value="0">当日の朝</option>
+    <option value="1">1日前から</option>
+    <option value="3">3日前から</option>
+    <option value="7">1週間前から</option>
+    <option value="none">通知しない</option>
+  </select>
   <label>メモ・リンク</label>
   <textarea id="f_note" placeholder="スライドのURLなど"></textarea>
   <label>公開範囲</label>
@@ -394,11 +404,9 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
   <div class="swatches" id="pj_colors"></div>
   <label>担当メンバー（タップで選ぶ・係の人）</label>
   <div class="whopick" id="pj_members"></div>
-  <button class="addteam" id="pj_teamtoggle" style="margin-top:10px">▽ チーム分け（班に分けたいときだけ）</button>
-  <div id="pj_teamwrap" hidden>
-    <div id="pj_teams"></div>
-    <button class="addteam" id="pj_addteam">＋ チームを追加</button>
-  </div>
+  <label>チーム分け（班に分けたいときだけ）</label>
+  <div id="pj_teams"></div>
+  <button class="addteam" id="pj_addteam">＋ チームを追加</button>
   <div class="acts"><button class="no" id="pjNo">やめる</button><button class="go" id="pjOk">保存する</button></div>
   <div class="acts" id="pjDoneWrap" hidden style="margin-top:8px"><button class="no" id="pjDone" style="flex:1"></button></div>
   <div class="acts" id="pjDelWrap" hidden style="margin-top:8px"><button class="no" id="pjDel" style="color:var(--warn);border-color:#e6cbc4">このプロジェクトを削除</button></div>
@@ -634,7 +642,7 @@ function migrate(db){
     return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams,members:Array.isArray(p.members)?p.members:[]};
   });
   db.items=(db.items||[]).map(i=>({
-    who:[],team:'',other:'',visibility:'all',important:false,note:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',createdBy:'',updatedAt:t,deleted:false,...i,
+    who:[],team:'',other:'',visibility:'all',important:false,note:'',remind:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',createdBy:'',updatedAt:t,deleted:false,...i,
     who:Array.isArray(i.who)?i.who:(i.who?[i.who]:[]),
     days:Array.isArray(i.days)?i.days:[],
     comments:Array.isArray(i.comments)?i.comments:[]
@@ -664,7 +672,7 @@ const z=n=>String(n).padStart(2,'0');
 const ymd=d=>`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
 const TODAY=ymd(new Date());
 let view='home',cur=new Date(),sel=TODAY,filter=null,teamFilter=null,mineOnly=false,showDone=false,editing=null;
-let statusFilter=null,openProg=null;   // 数値タップの絞り込み／進捗アコーディオンの開いている案件
+let statusFilter=null,openProg=null,openTeam=null;   // 数値タップの絞り込み／進捗・チームの開いているアコーディオン
 let syncState='off',pending=[];
 
 const $=s=>document.querySelector(s);
@@ -795,14 +803,20 @@ function progRow(p,withActions){
   const tasks=liveItems().filter(i=>i.pj===p.id&&i.type==='task'&&(i.visibility!=='members'||canSee(i)));
   const done=tasks.filter(i=>i.done).length,pct=tasks.length?Math.round(done/tasks.length*100):0;
   let teamHtml='';
-  (p.teams||[]).forEach(tm=>{
-    const tt=tasks.filter(i=>i.team===tm.name);const td=tt.filter(i=>i.done).length;
-    const tp=tt.length?Math.round(td/tt.length*100):0;
-    teamHtml+=`<button class="teamline" data-tteam="${p.id}::${esc(tm.name)}">
-      <span class="tn"><i style="background:${tm.color}"></i>${esc(tm.name)}</span>
-      <span class="tt"><div style="width:${tp}%;background:${tm.color}"></div></span>
-      <span class="tp">${td}/${tt.length}</span></button>`;
-  });
+  if((p.teams||[]).length){
+    // チームは普段は隠し、▽で展開（タスクの％アコーディオンと同じ操作感）
+    const topen=openTeam===p.id;
+    let lines='';
+    (p.teams||[]).forEach(tm=>{
+      const tt=tasks.filter(i=>i.team===tm.name);const td=tt.filter(i=>i.done).length;
+      const tp=tt.length?Math.round(td/tt.length*100):0;
+      lines+=`<button class="teamline" data-tteam="${p.id}::${esc(tm.name)}">
+        <span class="tn"><i style="background:${tm.color}"></i>${esc(tm.name)}</span>
+        <span class="tt"><div style="width:${tp}%;background:${tm.color}"></div></span>
+        <span class="tp">${td}/${tt.length}</span></button>`;
+    });
+    teamHtml=`<button class="teamtoggle" data-ttog="${p.id}">${topen?'△':'▽'} チーム（${p.teams.length}）</button>`+(topen?lines:'');
+  }
   const acts=withActions?`<button class="cbadge" data-editpj="${p.id}" style="font-size:14px">✎ 編集</button>`:'';
   // ％タップで完了・未完了タスクを展開（アコーディオン）
   const open=openProg===p.id;
@@ -824,6 +838,7 @@ function progRow(p,withActions){
 }
 function bindProg(sc){
   document.querySelectorAll(sc+' [data-prog]').forEach(b=>b.onclick=()=>{ openProg=openProg===b.dataset.prog?null:b.dataset.prog; render(); });
+  document.querySelectorAll(sc+' [data-ttog]').forEach(b=>b.onclick=()=>{ openTeam=openTeam===b.dataset.ttog?null:b.dataset.ttog; render(); });
   document.querySelectorAll(sc+' .progtasks [data-open]').forEach(b=>b.onclick=()=>openSheet(b.dataset.open));
   document.querySelectorAll(sc+' [data-tteam]').forEach(b=>b.onclick=()=>{
     const [pid,tm]=b.dataset.tteam.split('::'); filter=pid; teamFilter=tm; view='todo'; render();
@@ -1019,6 +1034,7 @@ function openSheet(id){
   $('#f_rep').value=editing?.rep||'none';
   $('#f_until').value=editing?.until||'';
   $('#f_note').value=editing?.note||'';
+  $('#f_remind').value=editing?.remind||'';
   updateRepDays();
   fillTeamSelect($('#f_pj').value,editing?editing.team:'');
   renderComments(); $('#cmtWrap').hidden=!editing;
@@ -1053,7 +1069,7 @@ $('#save').onclick=()=>{
     who:pickedWho.slice(),team:(vis==='team'&&!isOther)?$('#f_team').value:'',
     visibility:vis==='members'?'members':'all', important:$('#f_imp').checked,
     rep, days:(rep==='weekly'||rep==='biweekly')?pickedDays.slice():[],
-    until:isEv?$('#f_until').value:'',note:$('#f_note').value.trim(),updatedAt:now()};
+    until:isEv?$('#f_until').value:'',note:$('#f_note').value.trim(),remind:$('#f_remind').value,updatedAt:now()};
   let id;
   if(editing){Object.assign(editing,o);id=editing.id;} else {id='i'+now();DB.items.push({id,done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,...o});}
   $('#sheet').hidden=true;sel=o.date;toast(editing?'更新しました':'追加しました');commit([id]);
@@ -1074,9 +1090,6 @@ function openPjSheet(id){
   pjTeams=pjEditing?pjEditing.teams.map(t=>({...t,members:[...(t.members||[])]})):[];
   pjMembers=pjEditing?[...(pjEditing.members||[])]:[];
   pjTeamOpen=-1;
-  // チーム分けは普段は隠す（使っているプロジェクトだけ最初から開く）
-  $('#pj_teamwrap').hidden=!pjTeams.length;
-  paintPjTeamToggle();
   $('#pj_colors').innerHTML=swatchRow(pjColor);
   $('#pj_colors').querySelectorAll('.sw').forEach(s=>s.onclick=()=>{pjColor=s.dataset.c;$('#pj_colors').innerHTML=swatchRow(pjColor);bindColorRow('#pj_colors',()=>pjColor,v=>pjColor=v);});
   bindColorRow('#pj_colors',()=>pjColor,v=>pjColor=v);
@@ -1084,11 +1097,6 @@ function openPjSheet(id){
   renderPjTeams();
   $('#pjsheet').hidden=false;
 }
-function paintPjTeamToggle(){
-  const open=!$('#pj_teamwrap').hidden;
-  $('#pj_teamtoggle').textContent=(open?'△ チーム分けを隠す':'▽ チーム分け（班に分けたいときだけ）');
-}
-$('#pj_teamtoggle').onclick=()=>{ $('#pj_teamwrap').hidden=!$('#pj_teamwrap').hidden; paintPjTeamToggle(); };
 function renderPjMembers(){
   $('#pj_members').innerHTML=CFG.members.map(m=>`<button type="button" data-pm="${esc(m.name)}" class="${pjMembers.includes(m.name)?'on':''}">${esc(dispName(m.name))}</button>`).join('')
     ||`<span style="font-size:12px;color:var(--faint)">メンバー未登録（設定から）</span>`;
@@ -1237,7 +1245,14 @@ async function enablePush(){
       pub=res.pub||u8ToB64u(raw);
     }
     const reg=await navigator.serviceWorker.ready;
-    const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToU8(pub)});
+    let sub;
+    try{ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToU8(pub)}); }
+    catch(err){ // 別の鍵で購読済みだと失敗する（鍵を更新した後の端末）→ 古い購読を破棄して作り直す
+      const old=await reg.pushManager.getSubscription();
+      if(old){ try{ await apiPost({action:'unsubscribe',endpoint:old.endpoint}); }catch(e2){} await old.unsubscribe();
+        sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToU8(pub)});
+      } else throw err;
+    }
     await apiPost({action:'subscribe',name:ME,sub:sub.toJSON()});
     await idbSet('pushcfg',{url:CFG.url,key:CFG.appKey||'',me:ME,vapidPub:pub});
     toast('この端末で通知を受け取ります');
