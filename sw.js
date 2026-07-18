@@ -1,6 +1,6 @@
 // キャッシュ優先 → 裏で更新。GASの初回応答が遅くても画面が即出る。
 // ＋ Web Push受信（本文はGASの notifyfeed から取得してロック画面に表示）
-const V = 'zemi-v26';
+const V = 'zemi-v27';
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

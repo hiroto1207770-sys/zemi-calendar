@@ -186,6 +186,8 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
 .whopick{display:flex;flex-wrap:wrap;gap:6px}
 .whopick button{border:1px solid var(--line);border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:600;color:var(--muted);background:var(--card)}
 .whopick button.on{background:var(--card-2);border-color:var(--ink);color:var(--ink)}
+/* hidden属性は常に最優先で非表示（display指定のあるオーバーレイ等がhiddenでも見えてしまうバグの根治） */
+[hidden]{display:none!important}
 /* タップの反応を良くする（ダブルタップ判定の待ち時間をなくす） */
 button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 /* 週表示 */
@@ -2129,7 +2131,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='26'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='27'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
