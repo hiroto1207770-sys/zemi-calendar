@@ -186,6 +186,11 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
 .whopick{display:flex;flex-wrap:wrap;gap:6px}
 .whopick button{border:1px solid var(--line);border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:600;color:var(--muted);background:var(--card)}
 .whopick button.on{background:var(--card-2);border-color:var(--ink);color:var(--ink)}
+/* タップの反応を良くする（ダブルタップ判定の待ち時間をなくす） */
+button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
+/* 過去の予定からの候補チップ */
+.sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.sugg button{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--muted);background:var(--card-2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .swatches{display:flex;gap:9px;flex-wrap:wrap;margin-top:4px}
 .sw{width:32px;height:32px;border-radius:9px;position:relative;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
 .sw.on{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--ink)}
@@ -339,9 +344,10 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
   </div>
   <label>プロジェクト＆係</label>
   <select id="f_pj"></select>
-  <div id="w_other" hidden><label>内容名（プロジェクトなしの予定）</label><input id="f_other" placeholder="例：バイト・私用・全体連絡"></div>
-  <label>内容</label>
-  <input id="f_title" placeholder="例：コンセプト案を出す">
+  <div id="w_other" hidden><label>分類（プロジェクトなしの予定）</label><input id="f_other" placeholder="例：バイト・私用・全体連絡"></div>
+  <label>内容名</label>
+  <input id="f_title" placeholder="例：コンセプト案を出す" autocomplete="off">
+  <div class="sugg" id="f_sug" hidden></div>
   <label id="l_date">期限</label>
   <input id="f_date" type="date">
   <div id="w_time" hidden>
@@ -394,7 +400,7 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
     <div class="cmtadd"><input id="cmtInput" placeholder="ひとことメモ…"><button id="cmtSend">送信</button></div>
   </div>
   <div class="acts"><button class="no" id="cancel">やめる</button><button class="go" id="save">保存する</button></div>
-  <div class="acts" id="shareWrap" hidden style="margin-top:8px"><button class="no" id="shareBtn" style="flex:1">📤 LINEなどで共有</button></div>
+  <div class="acts" id="shareWrap" hidden style="margin-top:8px"><button class="no" id="shareBtn" style="flex:1">📤 共有</button></div>
   <div class="acts" id="delWrap" hidden style="margin-top:8px"><button class="no" id="del" style="color:var(--warn);border-color:#e6cbc4">削除する</button></div>
 </div></div>
 
@@ -458,11 +464,11 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
   <p class="help" id="bk_pdfhint">読み取った予定は下の欄に入るので、確認してから取り込めます。※AIキー（設定）が必要。テキストの貼り付けだけでも使えます。</p>
   <label>登録先のプロジェクト＆係</label>
   <select id="bk_pj"></select>
-  <div id="bk_other" hidden><input id="bk_otherlabel" placeholder="内容名（例：大学）"></div>
+  <div id="bk_other" hidden><input id="bk_otherlabel" placeholder="分類名（例：大学）"></div>
   <label>基準の年（「4/8」など年がない行に使います）</label>
   <input id="bk_year" type="number" inputmode="numeric">
-  <label>予定（1行1件：日付＋内容）</label>
-  <textarea id="bk_text" style="min-height:130px" placeholder="4/8 前期ガイダンス&#10;4/10 健康診断&#10;2026-05-10 中間発表"></textarea>
+  <label>予定（1行1件：日付＋内容。期間・時刻・「◯日以外」もOK）</label>
+  <textarea id="bk_text" style="min-height:130px" placeholder="4/8 前期ガイダンス&#10;7/22 18:00〜21:00 バイト&#10;8/1〜8/5 10時から12時 集中講義 8/3以外&#10;2026-05-10 中間発表"></textarea>
   <div id="bk_prev" class="help" style="display:none"></div>
   <div class="acts"><button class="no" id="bkNo">やめる</button><button class="go" id="bkOk">取り込む</button></div>
 </div></div>
@@ -522,12 +528,11 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
     <p class="help">キーは <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brass-d);font-weight:700">Google AI Studio</a> で無料発行。</p>
     <label>AIモデル</label>
     <select id="c_gmodel">
-      <option value="gemini-2.0-flash">gemini-2.0-flash（標準）</option>
-      <option value="gemini-2.5-flash">gemini-2.5-flash（高精度）</option>
-      <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite（軽量）</option>
-      <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-      <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b</option>
+      <option value="gemini-2.5-flash">gemini-2.5-flash（標準）</option>
+      <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（軽量・無料枠が多い）</option>
+      <option value="gemini-2.5-pro">gemini-2.5-pro（高精度・無料枠少なめ）</option>
     </select>
+    <p class="help">※旧モデル（gemini-2.0系・1.5系）は無料枠が終了しエラーになります。</p>
     <label>目標（ホームに表示・全員に共有）</label>
     <input id="c_goal1" placeholder="水野ゼミとしての目標">
     <input id="c_goal2" placeholder="9期生としての目標" style="margin-top:6px">
@@ -571,8 +576,10 @@ const now = () => Date.now();
 
 const MEMBERS0 = ['みおり','まい','めい','るい','そうた','ひろと','りの','ゆずか','ゆりな','あおい','さくら','あやか','ゆいの'].map(n=>({name:n}));
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
-const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'gemini-2.0-flash', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'gemini-2.5-flash', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 if(!CFG.url) CFG.url=DEFAULT_URL;
+// 旧モデルは無料枠が終了（limit:0 エラー）→ 2.5系へ自動移行
+if(/^gemini-(2\.0|1\.5)/.test(CFG.geminiModel||'')){ CFG.geminiModel=/lite|8b/.test(CFG.geminiModel)?'gemini-2.5-flash-lite':'gemini-2.5-flash'; LS.set('cfg',CFG); }
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
 if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON.stringify(['大翔','山田','佐藤','鈴木','高橋'])){ CFG.members=MEMBERS0.map(m=>({...m})); }
 // メンバーは {name, birthday} に正規化（旧データは文字列配列や nick 付き）
@@ -981,10 +988,18 @@ function render(){
   if(view==='home')renderHome(); if(view==='cal')renderCal(); if(view==='todo')renderTodo(); if(view==='pj')renderPj();
   renderSync();
 }
+// 自動同期後の描き直し：シートを開いている・入力中の間は先送りする（画面が作り直されてタップが効かなくなるのを防ぐ）
+let _rt=null;
+function renderSoon(){
+  clearTimeout(_rt);
+  const busy=document.querySelector('.sheet:not([hidden])')||(document.activeElement&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
+  if(busy){ _rt=setTimeout(renderSoon,1500); return; }
+  render();
+}
 function renderSync(){
   const s=$('#sync');
-  const stCls={ok:'',off:'off',err:'err',busy:'busy'}[syncState]||'off';
-  const stTxt={ok:'同期中',off:'端末内のみ',err:'つながりません',busy:'同期しています…'}[syncState]||'';
+  const stCls={ok:'',off:'off',err:'err',auth:'err',busy:'busy'}[syncState]||'off';
+  const stTxt={ok:'同期中',off:'端末内のみ',err:'つながりません',auth:'⚠合言葉が必要（設定から入力）',busy:'同期しています…'}[syncState]||'';
   s.innerHTML=CFG.url?`<span class="st ${stCls}"><span class="led"></span>${stTxt}</span> ・ <button id="opencfg">設定</button>`
     :`<b>この端末の中だけに保存されています</b><br><button id="opencfg">全員で共有する設定をする</button>`;
   $('#opencfg').onclick=openCfg;
@@ -1081,9 +1096,44 @@ function openSheet(id){
   updateRepDays();
   fillTeamSelect($('#f_pj').value,editing?editing.team:'');
   renderComments(); $('#cmtWrap').hidden=!editing;
+  renderSugg();
   $('#sheet').hidden=false;
 }
 $('#f_pj').onchange=()=>{ $('#w_other').hidden=$('#f_pj').value!=='__other__'; fillTeamSelect($('#f_pj').value,''); };
+/* 過去に追加した予定・やることを候補として出す（タップで同じ内容が入る） */
+function renderSugg(){
+  const el=$('#f_sug');
+  if(editing){ el.hidden=true; return; }   // 新規追加のときだけ
+  const q=$('#f_title').value.trim();
+  const seen={},list=[];
+  liveItems().slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).forEach(i=>{
+    if(!i.title||seen[i.title])return; seen[i.title]=1;
+    if(q&&(!i.title.includes(q)||i.title===q))return;
+    list.push(i);
+  });
+  const top=list.slice(0,6);
+  el.hidden=!top.length;
+  el.innerHTML=top.map(i=>`<button type="button" data-sug="${i.id}">🕐 ${esc(i.title)}</button>`).join('');
+  el.querySelectorAll('[data-sug]').forEach(b=>b.onclick=()=>applySugg(b.dataset.sug));
+}
+function applySugg(id){
+  const s=DB.items.find(i=>i.id===id); if(!s)return;
+  setKind(s.type);
+  $('#f_title').value=s.title;
+  if([...$('#f_pj').options].some(o=>o.value===(s.pj||'__other__'))){
+    $('#f_pj').value=s.pj||'__other__'; $('#w_other').hidden=$('#f_pj').value!=='__other__';
+  }
+  $('#f_other').value=s.other||'';
+  vis=s.visibility==='members'?'members':(s.team?'team':'all'); paintVis();
+  fillTeamSelect($('#f_pj').value,s.team||'');
+  pickedWho=[...(s.who||[])]; paintWho();
+  $('#f_time').value=s.time||''; $('#f_end').value=s.endTime||'';
+  if(s.type==='event'){ $('#f_allday').checked=!s.time; updateAllday(); }
+  $('#f_note').value=s.note||''; $('#f_remind').value=s.remind||'';
+  renderSugg();
+  toast('前回と同じ内容を入れました。日付を確認して保存してください');
+}
+$('#f_title').addEventListener('input',renderSugg);
 function renderComments(){
   if(!editing){$('#cmtList').innerHTML='';return;}
   const cs=editing.comments||[]; $('#cmtCnt').textContent=cs.length;
@@ -1127,7 +1177,9 @@ $('#shareBtn').onclick=async()=>{
     +(i.note?`📝${i.note}\n`:'')
     +'https://hiroto1207770-sys.github.io/zemi-calendar/';
   if(navigator.share){ try{ await navigator.share({text:txt}); return; }catch(e){ if(e&&e.name==='AbortError')return; } }
-  window.open('https://line.me/R/share?text='+encodeURIComponent(txt),'_blank');
+  // PCなど共有シートが無い環境：クリップボードにコピーして貼り付けてもらう
+  try{ await navigator.clipboard.writeText(txt); toast('内容をコピーしました。LINEなどに貼り付けて共有できます'); }
+  catch(_){ window.open('https://line.me/R/share?text='+encodeURIComponent(txt),'_blank'); }
 };
 
 /* ============================================================ 案件編集シート */
@@ -1358,7 +1410,7 @@ async function askAI(){
   const out=$('#ai_out'); out.hidden=false; out.classList.add('loading'); out.textContent='考えています…';
   const prompt=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n\n${buildAIContext()}\n\n【質問】${q}`;
   try{
-    const model=CFG.geminiModel||'gemini-2.0-flash';
+    const model=CFG.geminiModel||'gemini-2.5-flash';
     const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
@@ -1526,7 +1578,7 @@ function openCfg(){
   renderMemListRO(); paintAdmin();
   $('#c_url').value=CFG.url;
   $('#c_keyon').checked=!!CFG.appKey; $('#c_keywrap').hidden=!CFG.appKey; $('#c_key').value=CFG.appKey||'';
-  $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'gemini-2.0-flash';
+  $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'gemini-2.5-flash';
   $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
   refreshIcsField();
   renderPushUI();
@@ -1565,7 +1617,7 @@ $('#cfgOk').onclick=async()=>{
   const wasAdmin=isAdmin();
   if(wasAdmin){ // AIキー・モデル・メンバーは管理者のみ変更可
     CFG.geminiKey=$('#c_gkey').value.trim();
-    CFG.geminiModel=$('#c_gmodel').value.trim()||'gemini-2.0-flash';
+    CFG.geminiModel=$('#c_gmodel').value.trim()||'gemini-2.5-flash';
     CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||''})).filter(m=>m.name);
   }
   const chosen=$('#c_me').value;
@@ -1626,7 +1678,7 @@ $('#bk_pdffile').onchange=e=>{
     const b64=String(rd.result).split(',')[1];
     $('#bk_pdf').textContent='読み取っています…'; $('#bk_pdf').disabled=true;
     try{
-      const model=CFG.geminiModel||'gemini-2.0-flash';
+      const model=CFG.geminiModel||'gemini-2.5-flash';
       const prompt=`このPDFは大学の年間予定表です。日付が特定できる予定をすべて抜き出し、1行1件で「YYYY-MM-DD 内容」の形式だけで出力してください。期間の予定は初日の日付にしてください。説明文・前置き・記号は一切不要です。`;
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -1646,25 +1698,57 @@ $('#bk_pdffile').onchange=e=>{
   };
   rd.readAsDataURL(f);
 };
+/* 1行の書き方（どれでもOK）：
+   「4/8 ガイダンス」「2026-05-10 中間発表」
+   「7/22 18:00〜21:00 バイト」「7/22 18時から21時 バイト」
+   「8/1〜8/5 10:00〜12:00 集中講義」「8/1から8/5の10時から12時 集中講義 8/3以外」 */
 function parseBulk(){
   const year=parseInt($('#bk_year').value)||new Date().getFullYear();
+  const DATE='(?:(?:\\d{4})[-\\/.])?\\d{1,2}[\\/.-]\\d{1,2}';
+  const TIME='(?:\\d{1,2}[:：]\\d{2}|\\d{1,2}時半?)';
+  const parseD=s=>{ const m=String(s).match(/^(?:(\d{4})[-\/.])?(\d{1,2})[\/.-](\d{1,2})$/); if(!m)return null;
+    const y=m[1]?+m[1]:year,mo=+m[2],da=+m[3]; if(mo<1||mo>12||da<1||da>31)return null; return `${y}-${z(mo)}-${z(da)}`; };
+  const parseT=s=>{ let m=String(s).match(/^(\d{1,2})[:：](\d{2})$/); if(m)return z(+m[1])+':'+m[2];
+    m=String(s).match(/^(\d{1,2})時(半)?$/); if(m)return z(+m[1])+':'+(m[2]?'30':'00'); return null; };
+  const nextDay=k=>{ const d=new Date(k+'T00:00'); d.setDate(d.getDate()+1); return ymd(d); };
   const out=[];
   $('#bk_text').value.split('\n').map(s=>s.trim()).filter(Boolean).forEach(ln=>{
-    let m=ln.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})\s+(.+)$/), y,mo,da,title;
-    if(m){ y=+m[1];mo=+m[2];da=+m[3];title=m[4]; }
-    else { m=ln.match(/^(\d{1,2})[\/.](\d{1,2})(?:\s*[-〜~]\s*\d{1,2}[\/.]\d{1,2})?\s+(.+)$/); if(m){ y=year;mo=+m[1];da=+m[2];title=m[3]; } }
-    if(m&&mo>=1&&mo<=12&&da>=1&&da<=31) out.push({date:`${y}-${z(mo)}-${z(da)}`,title:title.trim()});
+    // 末尾の「◯日以外」（「、」「・」区切りで複数、期間もOK）を先に取り出す
+    const skip=new Set();
+    const exm=ln.match(new RegExp('[（(]?((?:'+DATE+'(?:\\s*(?:[〜~～]|から)\\s*'+DATE+')?)(?:\\s*[、,・]\\s*(?:'+DATE+'(?:\\s*(?:[〜~～]|から)\\s*'+DATE+')?))*)\\s*以外[）)]?\\s*$'));
+    if(exm){
+      ln=ln.slice(0,exm.index).trim();
+      exm[1].split(/\s*[、,・]\s*/).forEach(tok=>{
+        const pr=tok.split(/\s*(?:[〜~～]|から)\s*/).map(parseD);
+        if(pr[0]&&pr[1]){ let k=pr[0],n=0; while(k<=pr[1]&&n++<400){ skip.add(k); k=nextDay(k); } }
+        else if(pr[0]) skip.add(pr[0]);
+      });
+    }
+    // 先頭の日付（または期間）
+    const hm=ln.match(new RegExp('^('+DATE+')(?:\\s*(?:[〜~～-]|から)\\s*('+DATE+'))?\\s*の?\\s*(.*)$'));
+    if(!hm)return;
+    const d1=parseD(hm[1]), d2=hm[2]?parseD(hm[2]):null;
+    if(!d1||(hm[2]&&!d2))return;
+    let rest=hm[3]||'';
+    // 時刻（「10:00〜12:00」「10時から12時」「18:00」など）
+    let time='',endTime='';
+    const tm=rest.match(new RegExp('^('+TIME+')(?:\\s*(?:[〜~～-]|から)\\s*('+TIME+'))?\\s*の?\\s*(.*)$'));
+    if(tm&&parseT(tm[1])){ time=parseT(tm[1]); endTime=tm[2]?(parseT(tm[2])||''):''; rest=tm[3]||''; }
+    const title=rest.trim();
+    if(!title)return;
+    let k=d1,n=0;
+    do{ if(!skip.has(k)) out.push({date:k,time,endTime,title}); k=nextDay(k); n++; }while(d2&&k<=d2&&n<400);
   });
   return out;
 }
-$('#bk_text').addEventListener('input',()=>{ const p=parseBulk(),el=$('#bk_prev'); if(!p.length){el.style.display='none';return;} el.style.display='block'; el.textContent=`${p.length}件を認識：`+p.slice(0,3).map(x=>x.date.slice(5)+' '+x.title).join(' / ')+(p.length>3?' …':''); });
+$('#bk_text').addEventListener('input',()=>{ const p=parseBulk(),el=$('#bk_prev'); if(!p.length){el.style.display='none';return;} el.style.display='block'; el.textContent=`${p.length}件を認識：`+p.slice(0,3).map(x=>x.date.slice(5)+(x.time?' '+x.time+(x.endTime?'〜'+x.endTime:''):'')+' '+x.title).join(' / ')+(p.length>3?' …':''); });
 $('#bkOk').onclick=()=>{
   const parsed=parseBulk(); if(!parsed.length){ toast('日付ではじまる行がありません'); return; }
   const isOther=$('#bk_pj').value==='__other__', other=isOther?$('#bk_otherlabel').value.trim():'';
   if(isOther&&!other){ $('#bk_otherlabel').focus(); return; }
   if(!confirm(`${parsed.length}件を登録します。よろしいですか？`)) return;
   const ids=[],t0=now();
-  parsed.forEach((p,idx)=>{ const id='i'+(t0+idx); DB.items.push({id,type:'event',pj:isOther?'':$('#bk_pj').value,other,title:p.title,date:p.date,time:'',endTime:'',who:[],team:'',visibility:'all',important:false,note:'',done:false,rep:'none',days:[],until:'',comments:[],createdBy:ME,updatedAt:t0+idx,deleted:false}); ids.push(id); });
+  parsed.forEach((p,idx)=>{ const id='i'+(t0+idx); DB.items.push({id,type:'event',pj:isOther?'':$('#bk_pj').value,other,title:p.title,date:p.date,time:p.time||'',endTime:p.endTime||'',who:[],team:'',visibility:'all',important:false,note:'',done:false,rep:'none',days:[],until:'',comments:[],createdBy:ME,updatedAt:t0+idx,deleted:false}); ids.push(id); });
   $('#bulksheet').hidden=true; toast(`${parsed.length}件を追加しました`); commit(ids);
 };
 
@@ -1770,18 +1854,21 @@ async function syncNow(){
   setSync('busy');
   try{
     const remote=await API.load();
-    let missing=[];
+    let missing=[],changed=false;
     if(remote&&remote.projects){
       // サーバに無いローカル分を洗い出して送る（初期データや同期漏れの自己修復。端末ごとに内容が違う問題を解消）
       const rp=new Set(remote.projects.map(p=>p.id)), ri=new Set((remote.items||[]).map(i=>i.id));
       missing=[...DB.projects.filter(p=>!rp.has(p.id)),...DB.items.filter(i=>!ri.has(i.id))].map(x=>x.id);
+      const before=JSON.stringify(DB);
       DB=migrate(mergeInto(DB,remote));LS.set('db',DB);
+      changed=JSON.stringify(DB)!==before;
     }
-    applyMeta(remote); setSync('ok'); render();
+    applyMeta(remote); setSync('ok');
+    if(changed) renderSoon();   // 変化があったときだけ描き直す（操作中の「ボタンが効かない」を防ぐ）
     if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
   }
   catch(e){
-    console.warn('読み込み失敗',e); setSync('err');
+    console.warn('読み込み失敗',e); setSync(String(e.message)==='unauthorized'?'auth':'err');
     if(String(e.message)==='unauthorized' && !_keyPrompting){ // 合言葉が必要／間違っている → 入力を促す
       _keyPrompting=true;
       const k=prompt('このゼミの「合言葉」を入力してください（みんなに配られた合言葉です）');
@@ -1800,7 +1887,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='23'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='24'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
