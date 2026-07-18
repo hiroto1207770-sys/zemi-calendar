@@ -1,0 +1,57 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>水野ゼミ カレンダー 管理者マニュアル</title>
+<link rel="icon" href="icon-192.png">
+<style>
+body{font-family:"Hiragino Sans","Yu Gothic",sans-serif;background:#232a2a;color:#e8e4d8;margin:0;line-height:1.9}
+.wrap{max-width:680px;margin:0 auto;padding:24px 18px 60px}
+h1{font-size:20px;border-bottom:2px solid #a9884f;padding-bottom:8px;color:#e2c284}
+h2{font-size:15px;color:#c9a25e;margin-top:26px;border-left:4px solid #a9884f;padding-left:8px}
+p,li,td{font-size:13.5px} b{color:#e2c284}
+.card{background:#2b3332;border:1px solid #3a4442;border-radius:12px;padding:4px 16px;margin:10px 0}
+code{background:#1b2121;border-radius:4px;padding:1px 6px;font-size:12.5px;color:#c9a25e}
+table{border-collapse:collapse;width:100%;margin:8px 0}td{border:1px solid #3a4442;padding:6px 9px;vertical-align:top}
+.warn{color:#e8b08a}
+</style></head><body><div class="wrap">
+<h1>管理者マニュアル（この紙は配らない）</h1>
+
+<h2>権限とパスワード</h2>
+<div class="card"><table>
+<tr><td><b>合言葉</b></td><td>アプリに入るための鍵。全員に配る。変更＝スプレッドシートの拡張機能→Apps Script→プロジェクトの設定→スクリプトプロパティ <code>APP_KEY</code></td></tr>
+<tr><td><b>管理者パスワード</b></td><td>初期値 <code>1270</code>。設定→「🔑管理者メニュー」で入力すると管理機能が開く（アプリを開くたびに要入力）。メニュー内で変更可。<b>忘れた時</b>：スプレッドシートの「meta」シートで key が <code>adminpass</code> の行を削除→1270に戻る</td></tr>
+<tr><td><b>管理者は1人</b></td><td>最初にパスで解錠した人（あなた）だけが管理者。引き継ぐときだけ管理者メニューの「登録を解除」→次にパスを入れた人が管理者に</td></tr>
+<tr><td><b>各自の暗証番号</b></td><td>本人確認用。本人が初回に設定。<b>忘れた人が出たら</b>：管理者メニューのメンバー一覧で🔓→その人は選び直し＆番号を決め直せる</td></tr>
+</table></div>
+
+<h2>管理者メニューでできること（設定→🔑）</h2>
+<div class="card"><ul>
+<li><b>メンバー管理</b>：追加・削除・🎂誕生日（カレンダーに表示）・🔓名前ロック解除</li>
+<li><b>AIキー</b>：Google AI Studio の無料キーを入れると「AIにきく」とPDF読み取りが全員使える</li>
+<li><b>目標</b>：水野ゼミ／9期生の目標を入れると全員のホームに表示</li>
+<li><b>管理者パスワードの変更・引き継ぎ</b></li>
+</ul></div>
+
+<h2>仕組み（どこに何があるか）</h2>
+<div class="card"><table>
+<tr><td>アプリ本体</td><td>GitHub Pages：<code>hiroto1207770-sys/zemi-calendar</code>（無料）</td></tr>
+<tr><td>データ</td><td>あなたのGoogleスプレッドシート（projects / items / meta / push シート）。<b>版履歴＝バックアップ</b>（ファイル→変更履歴から復元可）</td></tr>
+<tr><td>同期・通知の司令塔</td><td>同スプレッドシートの Apps Script（GAS）。毎朝のトリガー <code>daily</code> が通知を発射</td></tr>
+<tr><td>通知の送信</td><td>Cloudflare Worker <code>zemi-push</code>（無料）が署名して各端末へ配信</td></tr>
+</table>
+<p class="warn">⚠ すべて無料枠。Googleアカウント（スプレッドシート）と Cloudflare のログイン情報は絶対に失くさないこと＝これが全データの鍵。</p></div>
+
+<h2>困ったときの対処</h2>
+<div class="card"><ul>
+<li><b>誰かが名前を間違えた</b>：管理者メニュー→その人の🔓→本人が選び直す</li>
+<li><b>データを間違って消した</b>：スプレッドシートの「ファイル→変更履歴」で過去の版に戻す</li>
+<li><b>表示がおかしい端末がある</b>：アプリを完全に閉じて開き直す（自動で最新版になる）。ダメならホーム画面のアイコンを入れ直す</li>
+<li><b>通知が来ない人</b>：iOS16.4以上か・ホーム画面のアイコンから開いて🔔を押したか・iPhoneの設定→通知で許可されているかを確認</li>
+<li><b>アプリの修正・機能追加</b>：開発担当（Claude）に依頼。配信すると各端末は次に開いたとき自動更新。データは消えない</li>
+</ul></div>
+
+<h2>公開する情報の範囲（把握しておく）</h2>
+<div class="card"><ul>
+<li>合言葉を知っている人はアプリの共有データ（全体公開の予定など）を見られる。<b>個人情報や秘密はメモ欄に書かない運用に</b></li>
+<li>チーム限定・個人指定は「画面上の絞り込み」であり、技術に詳しい人が本気で見れば見えるレベル（ゼミ内の性善説運用）</li>
+<li>本当に秘密の内容はこのアプリに載せない</li>
+</ul></div>
+</div></body></html>

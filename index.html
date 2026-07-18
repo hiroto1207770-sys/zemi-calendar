@@ -133,6 +133,9 @@ button.teamline:active{opacity:.6}
 .more{font-size:9px;color:var(--faint);padding-left:4px;font-weight:600}
 .pjmem{font-size:11px;color:var(--muted);margin:1px 0 5px 17px;line-height:1.5}
 .teamtoggle{display:block;background:none;border:none;font-size:11px;font-weight:600;color:var(--muted);padding:5px 0 2px 17px;cursor:pointer;text-align:left}
+.goalline{display:flex;gap:10px;align-items:baseline;padding:8px 2px;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.6}
+.goalline:last-child{border-bottom:none}
+.goalline span{flex:0 0 auto;font-size:10px;font-weight:700;color:var(--brass-d);border:1px solid var(--brass);border-radius:6px;padding:1px 7px;letter-spacing:.05em}
 
 .panel{margin-top:18px}
 .item{display:flex;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px 12px 15px;margin-bottom:9px;align-items:flex-start;position:relative;overflow:hidden;box-shadow:var(--sh-s)}
@@ -391,6 +394,7 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
     <div class="cmtadd"><input id="cmtInput" placeholder="ひとことメモ…"><button id="cmtSend">送信</button></div>
   </div>
   <div class="acts"><button class="no" id="cancel">やめる</button><button class="go" id="save">保存する</button></div>
+  <div class="acts" id="shareWrap" hidden style="margin-top:8px"><button class="no" id="shareBtn" style="flex:1">📤 LINEなどで共有</button></div>
   <div class="acts" id="delWrap" hidden style="margin-top:8px"><button class="no" id="del" style="color:var(--warn);border-color:#e6cbc4">削除する</button></div>
 </div></div>
 
@@ -524,6 +528,10 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
       <option value="gemini-1.5-flash">gemini-1.5-flash</option>
       <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b</option>
     </select>
+    <label>目標（ホームに表示・全員に共有）</label>
+    <input id="c_goal1" placeholder="水野ゼミとしての目標">
+    <input id="c_goal2" placeholder="9期生としての目標" style="margin-top:6px">
+    <div class="acts" style="margin-top:6px"><button type="button" class="no" id="c_goalsave" style="flex:1">目標を保存</button></div>
     <label>管理者パスワードを変更</label>
     <div class="row"><input id="c_admnew" type="text" inputmode="numeric" placeholder="新しい管理者パスワード"><button type="button" class="no" id="c_admchg" style="flex:0 0 auto;padding:0 16px">変更</button></div>
     <p class="help">変更には今のパスワードが必要です。<b>忘れたとき</b>は、Googleスプレッドシートの「meta」シートで <b>key が adminpass</b> の行を削除すると、次の同期で <b>1270</b> に戻ります。</p>
@@ -582,6 +590,7 @@ let DEV = LS.get('dev',''); if(!DEV){ DEV='d'+Math.random().toString(36).slice(2
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
 let CLAIMS  = LS.get('claims', {});        // 本名→端末IDの配列（同じ人の複数端末を許可）
 let PINSET  = LS.get('pinset', {});        // 本名→暗証番号が設定済みか(true/false)。番号そのものはサーバのみが知る
+let GOALS   = LS.get('goals', {zemi:'',gen:''}); // ホームに出す目標（管理者が設定・サーバ共有）
 const dispName = name => (DISPLAY[name]||name); // カレンダー等に出す名前は表示名（未設定なら本名）
 // テーマ（ライト/ダーク/自動）
 function applyTheme(){
@@ -748,7 +757,7 @@ function renderFilters(){
         p.teams.forEach(t=>{
           if(!(t.members||[]).includes(ME)) return;
           const on=filter===p.id&&teamFilter===t.name;
-          h+=`<button class="chip team ${on?'on':''}" data-pt="${p.id}::${esc(t.name)}" style="${on?`background:${t.color};border-color:${t.color}`:`color:${t.color}`}">${esc(t.name)}</button>`;
+          h+=`<button class="chip team ${on?'on':''}" data-pt="${p.id}::${esc(t.name)}" style="${on?`background:${t.color};border-color:${t.color}`:`color:${t.color}`}">【${esc(p.name)}】${esc(t.name)}</button>`;
         });
       } else if((p.members||[]).includes(ME)){
         const on=filter===p.id&&!teamFilter;
@@ -795,6 +804,12 @@ function renderHome(){
       <button id="tAI"><span class="ic">✨</span>AIにきく</button>
       <button id="tNotif"><span class="ic">🔔</span>通知の設定</button>
     </div>`;
+  if(GOALS.zemi||GOALS.gen){
+    h+=`<div class="homeblock"><div class="sec">目標</div>`
+      +(GOALS.zemi?`<div class="goalline"><span>水野ゼミ</span><b class="mincho">${esc(GOALS.zemi)}</b></div>`:'')
+      +(GOALS.gen?`<div class="goalline"><span>9期生</span><b class="mincho">${esc(GOALS.gen)}</b></div>`:'')
+      +`</div>`;
+  }
   h+=`<div class="homeblock"><div class="sec">今日 <span class="cnt">${todayList.length}</span></div>`;
   h+=bd.map(bdayCard).join('');
   h+=todayList.length?todayList.map(i=>card(i,TODAY)).join(''):(bd.length?'':`<div class="empty">今日の予定・締切はありません</div>`);
@@ -1039,6 +1054,7 @@ function openSheet(id){
   editing=id?DB.items.find(i=>i.id===id):null;
   $('#sheetTitle').textContent=editing?'なおす':'追加する';
   $('#delWrap').hidden=!editing;
+  $('#shareWrap').hidden=!editing;
   const pjOpts=activeProjects();
   if(editing&&editing.pj&&!pjOpts.some(p=>p.id===editing.pj)){ const ep=DB.projects.find(p=>p.id===editing.pj&&!p.deleted); if(ep)pjOpts.unshift(ep); } // 編集中の予定が完了済み案件に属していても選べるように
   $('#f_pj').innerHTML=pjOpts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.done?'（完了済み）':''}</option>`).join('')+`<option value="__other__">その他（プロジェクトなし・自由入力）</option>`;
@@ -1102,6 +1118,17 @@ $('#save').onclick=()=>{
   $('#sheet').hidden=true;sel=o.date;toast(editing?'更新しました':'追加しました');commit([id]);
 };
 $('#del').onclick=()=>{ if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;toast('削除しました');commit([id]); };
+// LINE等への共有（iPhone/Androidは共有シート、PCはLINEの共有ページを開く）
+$('#shareBtn').onclick=async()=>{
+  if(!editing)return; const i=editing, p=catOf(i);
+  const txt=`【${p.name}${i.team?'・'+i.team:''}】${i.title}\n`
+    +`${i.type==='task'?'📌期限':'📅日時'}: ${i.date}${i.time?' '+i.time+(i.endTime?'〜'+i.endTime:''):''}\n`
+    +((i.who||[]).length?`👤担当: ${i.who.map(dispName).join('・')}\n`:'')
+    +(i.note?`📝${i.note}\n`:'')
+    +'https://hiroto1207770-sys.github.io/zemi-calendar/';
+  if(navigator.share){ try{ await navigator.share({text:txt}); return; }catch(e){ if(e&&e.name==='AbortError')return; } }
+  window.open('https://line.me/R/share?text='+encodeURIComponent(txt),'_blank');
+};
 
 /* ============================================================ 案件編集シート */
 let pjEditing=null,pjColor=COLORS[0],pjTeams=[],pjMembers=[];
@@ -1360,6 +1387,12 @@ function renderMemListRO(){
   el.innerHTML=(CFG.members||[]).map(m=>`<div class="memrow"><div class="mn">${esc(m.name)}${DISPLAY[m.name]&&DISPLAY[m.name]!==m.name?`　<span style="color:var(--muted);font-size:12px">（${esc(DISPLAY[m.name])}）</span>`:''}</div>${m.birthday?`<span style="font-size:12px;color:var(--muted)">🎂${esc(bdDisp(m.birthday))}</span>`:''}</div>`).join('')
     ||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
 }
+// 管理者パスワードの照合（共有中はサーバで照合＝パスは端末に配られない。端末内のみモードはローカル既定値と比較）
+async function checkAdminPass(p){
+  if(p==null||!String(p).trim()) return false;
+  if(CFG.url){ try{ const r=await apiPost({action:'checkadminpass',pass:p}); return !!(r&&r.ok); }catch(e){ return p===ADMIN_PASS; } }
+  return p===ADMIN_PASS;
+}
 function paintAdmin(){
   const eligible = (!CFG.url && !ME) || ME===ADMIN_NAME || (ADMIN_NAME==='' && !!ME); // この端末で管理者になれる人か
   const on = isAdmin();
@@ -1374,7 +1407,7 @@ $('#c_adminBtn').onclick=async()=>{
   if(!ME){ toast('先に自分の名前を選んで保存してください'); return; }
   if(ADMIN_NAME && ME!==ADMIN_NAME){ toast('管理者だけが使えます'); return; }
   const p=prompt('管理者パスワードを入力してください'); if(p===null) return;
-  if(p!==ADMIN_PASS){ toast('パスワードが違います'); return; }
+  if(!(await checkAdminPass(p))){ toast('パスワードが違います'); return; }
   ADMIN_OK=true;
   if(ADMIN_NAME===''){ // 最初にパス解錠した人を、唯一の管理者として登録
     ADMIN_NAME=ME; CFG.adminName=ME; LS.set('cfg',CFG);
@@ -1387,10 +1420,26 @@ $('#c_admchg').onclick=async()=>{
   if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
   const nv=$('#c_admnew').value.trim(); if(!nv){ toast('新しいパスワードを入力してください'); return; }
   const cur=prompt('確認のため、今の管理者パスワードを入力してください'); if(cur===null) return;
-  if(cur!==ADMIN_PASS){ toast('今のパスワードが違います'); return; }
-  ADMIN_PASS=nv; CFG.adminPass=nv; LS.set('cfg',CFG); $('#c_admnew').value='';
-  if(CFG.url){ try{ await apiPost({action:'setadminpass',pass:nv}); toast('管理者パスワードを変更しました（全員に反映）'); }catch(e){ toast('保存に失敗：'+e.message); } }
-  else toast('管理者パスワードを変更しました（この端末のみ）');
+  if(CFG.url){
+    try{
+      const r=await apiPost({action:'setadminpass',pass:nv,old:cur});
+      if(!(r&&r.ok)){ toast('今のパスワードが違います'); return; }
+      toast('管理者パスワードを変更しました（全員に反映）');
+    }catch(e){ toast('保存に失敗：'+e.message); return; }
+  } else {
+    if(cur!==ADMIN_PASS){ toast('今のパスワードが違います'); return; }
+    ADMIN_PASS=nv; CFG.adminPass=nv; LS.set('cfg',CFG);
+    toast('管理者パスワードを変更しました');
+  }
+  $('#c_admnew').value='';
+};
+$('#c_goalsave').onclick=async()=>{
+  if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
+  GOALS={zemi:$('#c_goal1').value.trim(),gen:$('#c_goal2').value.trim()};
+  LS.set('goals',GOALS);
+  if(CFG.url){ try{ await apiPost({action:'setgoals',goals:GOALS}); toast('目標を保存しました（全員のホームに表示）'); }catch(e){ toast('保存に失敗：'+e.message); } }
+  else toast('目標を保存しました');
+  render();
 };
 $('#c_adminhandoff').onclick=async()=>{
   if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
@@ -1431,7 +1480,7 @@ $('#c_memadd').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefau
 $('#c_keyon').onchange=()=>{ $('#c_keywrap').hidden=!$('#c_keyon').checked; };
 /* ロゴ画像（この端末に保存・自動縮小） */
 function applyLogo(){ const img=$('#brandLogo'); if(!img)return; if(CFG.logo){img.src=CFG.logo;img.style.display='block';img.nextElementSibling.style.display='none';} }
-function renderLogoBtns(){ $('#c_logodel').style.display=CFG.logo?'':'none'; $('#c_logoprev').innerHTML=CFG.logo?`<img src="${CFG.logo}"><span style="font-size:12px;color:var(--muted)">現在のマーク</span>`:''; }
+function renderLogoBtns(){ $('#c_logo').style.display=CFG.logo?'none':''; $('#c_logodel').style.display=CFG.logo?'':'none'; $('#c_logoprev').innerHTML=CFG.logo?`<img src="${CFG.logo}"><span style="font-size:12px;color:var(--muted)">現在のマーク</span>`:''; }
 $('#c_logo').onclick=()=>$('#c_logofile').click();
 $('#c_logodel').onclick=()=>{ CFG.logo=''; LS.set('cfg',CFG); const img=$('#brandLogo'); img.src='logo.png'; renderLogoBtns(); toast('ロゴを消しました'); };
 $('#c_logofile').onchange=e=>{
@@ -1469,7 +1518,7 @@ function openCfg(){
   $('#c_disp').disabled=dispLocked;
   if(nameLocked||dispLocked){
     $('#c_mehelp').innerHTML=`「${esc(ME)}」で利用中　<button type="button" id="c_meunlock" style="background:none;border:none;color:#a9884f;text-decoration:underline;cursor:pointer;font-size:12px;padding:0">変更する（管理者）</button>`;
-    const b=$('#c_meunlock'); if(b) b.onclick=()=>{ const p=prompt('変更するには管理者パスワードを入力してください'); if(p===ADMIN_PASS){ _adminUnlocked=true; $('#c_me').disabled=false; $('#c_disp').disabled=false; $('#c_mehelp').textContent='本名・表示名を選び直せます（保存で確定）。'; } else if(p!==null){ toast('パスワードが違います'); } };
+    const b=$('#c_meunlock'); if(b) b.onclick=async()=>{ const p=prompt('変更するには管理者パスワードを入力してください'); if(p===null)return; if(await checkAdminPass(p)){ _adminUnlocked=true; $('#c_me').disabled=false; $('#c_disp').disabled=false; $('#c_mehelp').textContent='本名・表示名を選び直せます（保存で確定）。'; } else { toast('パスワードが違います'); } };
   } else {
     $('#c_mehelp').textContent='一度選ぶと変更できません。自分の名前を選んでください。';
   }
@@ -1478,6 +1527,7 @@ function openCfg(){
   $('#c_url').value=CFG.url;
   $('#c_keyon').checked=!!CFG.appKey; $('#c_keywrap').hidden=!CFG.appKey; $('#c_key').value=CFG.appKey||'';
   $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'gemini-2.0-flash';
+  $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
   refreshIcsField();
   renderPushUI();
   renderLogoBtns(); $('#cfg').hidden=false;
@@ -1704,7 +1754,8 @@ function applyMeta(remote){
   if(remote.display){ DISPLAY=remote.display; LS.set('display',DISPLAY); }
   if(remote.claims){ CLAIMS=remote.claims; LS.set('claims',CLAIMS); }
   if(remote.pinset){ PINSET=remote.pinset; LS.set('pinset',PINSET); } // どの名前に暗証番号があるか（番号自体は来ない）
-  if(remote.adminpass){ ADMIN_PASS=String(remote.adminpass); CFG.adminPass=ADMIN_PASS; LS.set('cfg',CFG); } // 管理者パスはサーバが正
+  if(remote.goals){ GOALS=remote.goals; LS.set('goals',GOALS); }      // 目標（管理者が設定）
+  // 管理者パスは同期しない（サーバ側で照合。応答に載せると誰でも見えてしまうため）
   if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
   // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
   const ul=remote.unlocks||{};
@@ -1748,7 +1799,27 @@ async function boot(){
   checkRecap();
 }
 boot();
-// 30秒ごと（画面を見ているときだけ）＋アプリに戻った瞬間。自分の編集は即時送信されるので、これは他人の変更の取り込み用。
+// ---- 版ずれの自動修復＆ローカルファイル警告 ----
+const APP_V='23'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+(async()=>{
+  if(location.protocol==='file:'){
+    // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
+    const b=document.createElement('div');
+    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:200;background:#b0483c;color:#fff;font-size:12px;padding:9px 12px;text-align:center;font-weight:600';
+    b.innerHTML='⚠ これは開発用のローカルファイルです（みんなと共有されません）。<a href="https://hiroto1207770-sys.github.io/zemi-calendar/" style="color:#fff;text-decoration:underline">アプリはこちらから開いてください</a>';
+    document.body.appendChild(b); return;
+  }
+  try{ // 古いキャッシュのHTMLで起動してしまったら、キャッシュを捨てて一度だけ自動リロード
+    const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();
+    const m=t.match(/zemi-v(\d+)/);
+    if(m && m[1]!==APP_V && sessionStorage.getItem('verReloaded')!==m[1]){
+      sessionStorage.setItem('verReloaded',m[1]);
+      if(window.caches){ const ks=await caches.keys(); for(const k of ks) await caches.delete(k); }
+      location.reload();
+    }
+  }catch(e){}
+})();
+// 20秒ごと（画面を見ているときだけ）＋アプリに戻った瞬間。自分の編集は即時送信されるので、これは他人の変更の取り込み用。
 // （見ていない画面は通信しない＝通信量・無料枠の節約。開いた瞬間に必ず同期するので体感は即時）
 setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },20000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); });
