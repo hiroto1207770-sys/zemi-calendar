@@ -1840,12 +1840,10 @@ $('#cfgOk').onclick=async()=>{
   CFG.appKey=$('#c_keyon').checked?$('#c_key').value.trim():'';
   const wasAdmin=isAdmin();
   if(wasAdmin){ // AIキー・モデル・メンバーは管理者のみ変更可
-    const newKey=$('#c_gkey').value.trim();
-    const keyChanged=newKey!==CFG.geminiKey;
-    CFG.geminiKey=newKey;
+    CFG.geminiKey=$('#c_gkey').value.trim();
     CFG.geminiModel=$('#c_gmodel').value;
     CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||''})).filter(m=>m.name);
-    if(CFG.url&&keyChanged) apiPost({action:'setgemkey',gemkey:CFG.geminiKey}).catch(()=>{});   // キーを全員に配る（全員がAIを使える）
+    if(CFG.url&&CFG.geminiKey) apiPost({action:'setgemkey',gemkey:CFG.geminiKey}).catch(()=>{});   // キーを全員に配る（全員がAIを使える）
   }
   CFG.spanArrow=$('#c_span').checked;
   const chosen=$('#c_me').value;
@@ -2131,7 +2129,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='27'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='28'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
