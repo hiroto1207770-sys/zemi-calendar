@@ -38,7 +38,7 @@
   --sh-s:0 1px 2px rgba(0,0,0,.3);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%}
+html,body{margin:0;height:100%;overflow-x:hidden}
 body{background:var(--paper);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;
   font-size:14px;line-height:1.55;padding-bottom:env(safe-area-inset-bottom);overscroll-behavior-y:none;-webkit-text-size-adjust:100%}
@@ -164,7 +164,7 @@ button.teamline:active{opacity:.6}
 .sheet{position:fixed;inset:0;z-index:50;background:rgba(26,31,31,.45);backdrop-filter:blur(2px);display:flex;align-items:flex-end;justify-content:center;animation:fade .15s ease}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .sheet[hidden]{display:none}
-.sheet .box{background:var(--card);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:14px var(--pad) calc(20px + env(safe-area-inset-bottom));max-height:94vh;overflow:auto;box-shadow:0 -8px 40px rgba(26,31,31,.24);animation:up .22s ease}
+.sheet .box{background:var(--card);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:14px var(--pad) calc(20px + env(safe-area-inset-bottom));max-height:94vh;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;box-shadow:0 -8px 40px rgba(26,31,31,.24);animation:up .22s ease}
 @keyframes up{from{transform:translateY(26px)}to{transform:translateY(0)}}
 .grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:2px auto 14px}
 .sheet h3{margin:0 0 4px;font-size:17px;font-weight:600;letter-spacing:.02em}
@@ -684,7 +684,8 @@ const dleft=d=>Math.round((new Date(d+'T00:00')-new Date(TODAY+'T00:00'))/864000
 const isMine=i=>ME&&i.who&&i.who.includes(ME);
 // 公開範囲：'members' は担当に入れた人（と作成者）だけの画面に表示（表示上の絞り込み）
 // チームのメンバーか（チーム未登録メンバーの場合は作成者・担当者のみ）
-const teamMembers=(pid,tname)=>{const p=pj(pid);const tm=(p.teams||[]).find(t=>t.name===tname);return tm?(tm.members||[]):[];};
+// チーム名からメンバーを引く。チーム分けの無い係は「係名＝係全体のチーム」として担当メンバーを返す
+const teamMembers=(pid,tname)=>{const p=pj(pid);const tm=(p.teams||[]).find(t=>t.name===tname);if(tm)return tm.members||[];return p.name===tname?(p.members||[]):[];};
 const inTeam=i=>!!ME&&(teamMembers(i.pj,i.team).includes(ME)||(i.who||[]).includes(ME)||i.createdBy===ME);
 /* 表示ルール：
    ・全体公開かつチームなし → 全員に表示
@@ -738,17 +739,31 @@ const involvedIn=p=>!ME || (p.members||[]).includes(ME) || (p.teams||[]).some(t=
 function renderFilters(){
   const f=$('#filters');
   const showMine=view!=='pj'&&ME;
-  let h=`<button class="chip ${!filter?'on':''}" data-p="">すべて</button>`+
-    activeProjects().filter(involvedIn).map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
-  const fp=filter?pj(filter):null;
-  if(fp&&fp.teams&&fp.teams.length){
-    h+=`<span class="fsep"></span>`+fp.teams.map(t=>`<button class="chip team ${teamFilter===t.name?'on':''}" data-team="${esc(t.name)}" style="${teamFilter===t.name?`background:${t.color};border-color:${t.color}`:`color:${t.color}`}">${esc(t.name)}</button>`).join('');
+  let h=`<button class="chip ${!filter?'on':''}" data-p="">すべて</button>`;
+  if(ME){
+    // プロジェクト名ではなく「自分が入っているチーム」だけを並べる。
+    // チーム分けの無い係は、担当メンバーに入っていれば係名で出す（係全体＝1つのチーム扱い）。
+    activeProjects().forEach(p=>{
+      if((p.teams||[]).length){
+        p.teams.forEach(t=>{
+          if(!(t.members||[]).includes(ME)) return;
+          const on=filter===p.id&&teamFilter===t.name;
+          h+=`<button class="chip team ${on?'on':''}" data-pt="${p.id}::${esc(t.name)}" style="${on?`background:${t.color};border-color:${t.color}`:`color:${t.color}`}">${esc(t.name)}</button>`;
+        });
+      } else if((p.members||[]).includes(ME)){
+        const on=filter===p.id&&!teamFilter;
+        h+=`<button class="chip ${on?'on':''}" data-p="${p.id}" style="${on?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`;
+      }
+    });
+  } else {
+    // 名前未設定の端末は従来どおりプロジェクトで絞り込み
+    h+=activeProjects().map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
   }
   if(showMine) h+=`<button class="chip mine ${mineOnly?'on':''}" data-mine="1">自分の担当</button>`;
   f.innerHTML=h;
   f.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
     if(b.dataset.mine!=null){ mineOnly=!mineOnly; }
-    else if(b.dataset.team!=null){ teamFilter=teamFilter===b.dataset.team?null:b.dataset.team; }
+    else if(b.dataset.pt!=null){ const [pid,tm]=b.dataset.pt.split('::'); if(filter===pid&&teamFilter===tm){filter=null;teamFilter=null;} else {filter=pid;teamFilter=tm;} }
     else { filter=b.dataset.p||null; teamFilter=null; }
     render();
   });
@@ -1000,9 +1015,14 @@ function fillTeamSelect(pid,selected){
   const p=(pid&&pid!=='__other__')?DB.projects.find(x=>x.id===pid):null;
   const teams=(p&&p.teams)||[];
   $('#w_team').hidden = vis!=='team';   // 「チーム限定」を選んだときだけ表示
-  $('#f_team').innerHTML = teams.length
-    ? teams.map(t=>`<option value="${esc(t.name)}" ${t.name===selected?'selected':''}>${esc(t.name)}（${(t.members||[]).length}人だけに表示）</option>`).join('')
-    : `<option value="">（チーム未登録。プロジェクト＆係の「✎ 編集」から追加できます）</option>`;
+  if(teams.length){
+    $('#f_team').innerHTML = teams.map(t=>`<option value="${esc(t.name)}" ${t.name===selected?'selected':''}>${esc(t.name)}（${(t.members||[]).length}人だけに表示）</option>`).join('');
+  } else if(p&&(p.members||[]).length){
+    // チーム分けしていない係は、係そのものを選べる（担当メンバーだけに表示）
+    $('#f_team').innerHTML = `<option value="${esc(p.name)}" selected>${esc(p.name)}（担当の${(p.members||[]).length}人だけに表示）</option>`;
+  } else {
+    $('#f_team').innerHTML = `<option value="">（チームも担当メンバーも未登録。プロジェクト＆係の「✎ 編集」から設定できます）</option>`;
+  }
 }
 function paintWho(){ $('#f_who').querySelectorAll('button').forEach(b=>b.classList.toggle('on',pickedWho.includes(b.dataset.w))); }
 function setKind(k){
