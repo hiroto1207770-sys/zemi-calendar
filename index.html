@@ -342,6 +342,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <button data-k="task" class="on">やること（期限つき）</button>
     <button data-k="event">予定（日時）</button>
   </div>
+  <button type="button" class="no" id="toBulk" style="width:100%;margin:0 0 6px;font-size:12.5px;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--card)">📋 まとめて追加（期間・箇条書きで一気に登録）</button>
   <label>プロジェクト＆係</label>
   <select id="f_pj"></select>
   <div id="w_other" hidden><label>分類（プロジェクトなしの予定）</label><input id="f_other" placeholder="例：バイト・私用・全体連絡"></div>
@@ -493,6 +494,8 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   </div>
 
   <div class="sec" style="margin-top:22px">共有と同期</div>
+  <div class="acts" style="margin:4px 0 8px"><button class="no" id="c_syncnow" type="button" style="flex:1">🔄 いま同期する</button></div>
+  <p class="help" id="c_syncinfo"></p>
   <label>つなぎ先 URL</label>
   <input id="c_url" placeholder="https://script.google.com/macros/s/…/exec">
   <p class="help">空のままなら、この端末だけに保存。URLを入れると全員の端末（何台でも）で同じデータが自動同期されます。表示は各自の設定に合わせて絞り込まれます。</p>
@@ -528,11 +531,11 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <p class="help">キーは <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brass-d);font-weight:700">Google AI Studio</a> で無料発行。</p>
     <label>AIモデル</label>
     <select id="c_gmodel">
-      <option value="gemini-2.5-flash">gemini-2.5-flash（標準）</option>
-      <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（軽量・無料枠が多い）</option>
-      <option value="gemini-2.5-pro">gemini-2.5-pro（高精度・無料枠少なめ）</option>
+      <option value="">自動でえらぶ（おすすめ）</option>
+      <option value="gemini-flash-latest">gemini-flash-latest</option>
+      <option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
     </select>
-    <p class="help">※旧モデル（gemini-2.0系・1.5系）は無料枠が終了しエラーになります。</p>
+    <p class="help">「自動」は、あなたのキーで使える最新のflashモデルを自動で選びます（モデル廃止エラーを回避）。</p>
     <label>目標（ホームに表示・全員に共有）</label>
     <input id="c_goal1" placeholder="水野ゼミとしての目標">
     <input id="c_goal2" placeholder="9期生としての目標" style="margin-top:6px">
@@ -576,10 +579,10 @@ const now = () => Date.now();
 
 const MEMBERS0 = ['みおり','まい','めい','るい','そうた','ひろと','りの','ゆずか','ゆりな','あおい','さくら','あやか','ゆいの'].map(n=>({name:n}));
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
-const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'gemini-2.5-flash', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 if(!CFG.url) CFG.url=DEFAULT_URL;
-// 旧モデルは無料枠が終了（limit:0 エラー）→ 2.5系へ自動移行
-if(/^gemini-(2\.0|1\.5)/.test(CFG.geminiModel||'')){ CFG.geminiModel=/lite|8b/.test(CFG.geminiModel)?'gemini-2.5-flash-lite':'gemini-2.5-flash'; LS.set('cfg',CFG); }
+// 番号つきの旧モデルは次々に廃止される（limit:0 / no longer available エラー）→「自動選択」へ移行
+if(/^gemini-(2\.5|2\.0|1\.5)/.test(CFG.geminiModel||'')){ CFG.geminiModel=''; LS.set('cfg',CFG); }
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
 if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON.stringify(['大翔','山田','佐藤','鈴木','高橋'])){ CFG.members=MEMBERS0.map(m=>({...m})); }
 // メンバーは {name, birthday} に正規化（旧データは文字列配列や nick 付き）
@@ -689,7 +692,7 @@ const ymd=d=>`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
 const TODAY=ymd(new Date());
 let view='home',cur=new Date(),sel=TODAY,filter=null,teamFilter=null,mineOnly=false,showDone=false,editing=null;
 let statusFilter=null,openProg=null,openTeam=null;   // 数値タップの絞り込み／進捗・チームの開いているアコーディオン
-let syncState='off',pending=[];
+let syncState='off',pending=[],_lastSync='';
 
 const $=s=>document.querySelector(s);
 const pj=id=>(DB.projects.find(p=>p.id===id&&!p.deleted))||{name:'—',color:'#aba393',teams:[]};
@@ -1010,7 +1013,8 @@ function freshItem(o){ let t=DB.items.find(x=>x.id===o.id); if(!t){ t=o; DB.item
 function freshPj(o){ let t=DB.projects.find(x=>x.id===o.id); if(!t){ t=o; DB.projects.push(t); } return t; }
 async function commit(ids){ LS.set('db',DB); render(); if(!CFG.url) return; if(ids&&ids.length) ids.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
 async function flush(){
-  if(!CFG.url||!pending.length||syncState==='busy') return;
+  if(!CFG.url||!pending.length) return;
+  if(syncState==='busy'){ setTimeout(flush,1500); return; }   // 同期中でも保存が滞留しないよう少し後に自動再送
   const ids=pending.splice(0);
   const changed={projects:DB.projects.filter(p=>ids.includes(p.id)),items:DB.items.filter(i=>ids.includes(i.id))};
   setSync('busy');
@@ -1070,6 +1074,7 @@ function openSheet(id){
   $('#sheetTitle').textContent=editing?'なおす':'追加する';
   $('#delWrap').hidden=!editing;
   $('#shareWrap').hidden=!editing;
+  $('#toBulk').hidden=!!editing;
   const pjOpts=activeProjects();
   if(editing&&editing.pj&&!pjOpts.some(p=>p.id===editing.pj)){ const ep=DB.projects.find(p=>p.id===editing.pj&&!p.deleted); if(ep)pjOpts.unshift(ep); } // 編集中の予定が完了済み案件に属していても選べるように
   $('#f_pj').innerHTML=pjOpts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.done?'（完了済み）':''}</option>`).join('')+`<option value="__other__">その他（プロジェクトなし・自由入力）</option>`;
@@ -1147,6 +1152,7 @@ $('#cmtSend').onclick=()=>{
 };
 $('#cmtInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('#cmtSend').click();});
 $('#add').onclick=()=>openSheet(null);
+$('#toBulk').onclick=()=>{ $('#sheet').hidden=true; openBulk(); };
 $('#cancel').onclick=()=>$('#sheet').hidden=true;
 $('#sheet').onclick=e=>{if(e.target.id==='sheet')$('#sheet').hidden=true};
 document.querySelectorAll('#kind button').forEach(b=>b.onclick=()=>setKind(b.dataset.k));
@@ -1163,6 +1169,11 @@ $('#save').onclick=()=>{
     visibility:vis==='members'?'members':'all', important:$('#f_imp').checked,
     rep, days:(rep==='weekly'||rep==='biweekly')?pickedDays.slice():[],
     until:isEv?$('#f_until').value:'',note:$('#f_note').value.trim(),remind:$('#f_remind').value,updatedAt:now()};
+  // 二重登録ガード：同じ内容名・日付・時刻がすでにあれば確認（同期の遅れで古い画面を見て再追加した場合の保険）
+  if(!editing){
+    const dup=liveItems().find(x=>x.type===kind&&x.title===t&&x.date===o.date&&(x.time||'')===(o.time||''));
+    if(dup&&!confirm('同じ内容名・同じ日付のものがすでに登録されています。\nそれでも追加しますか？')) return;
+  }
   let id;
   if(editing){const t=freshItem(editing);Object.assign(t,o);id=t.id;} else {id='i'+now();DB.items.push({id,done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,...o});}
   $('#sheet').hidden=true;sel=o.date;toast(editing?'更新しました':'追加しました');commit([id]);
@@ -1404,22 +1415,50 @@ function buildAIContext(){
   upcoming(14).forEach(o=>lines.push('- '+lineOf(o)));
   return lines.join('\n');
 }
+/* Geminiのモデルは次々に廃止される → キーで使えるモデル一覧から自動で選ぶ（設定「自動」時） */
+let _gmPick=null;
+async function geminiModel(){
+  if(CFG.geminiModel) return CFG.geminiModel;
+  if(_gmPick) return _gmPick;
+  const c=LS.get('gmodel',null);
+  if(c&&c.m&&c.t>now()-7*864e5){ _gmPick=c.m; return c.m; }   // 1週間キャッシュ
+  try{
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key='+encodeURIComponent(CFG.geminiKey));
+    const j=await r.json();
+    const ms=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>String(m.name||'').replace('models/',''));
+    const pick=ms.find(n=>n==='gemini-flash-latest')
+      ||ms.filter(n=>/flash/.test(n)&&!/lite|preview|exp|8b|image|tts|live|thinking|audio/.test(n)).sort().reverse()[0]
+      ||ms.filter(n=>/flash/.test(n)).sort().reverse()[0]||ms[0];
+    if(pick){ _gmPick=pick; LS.set('gmodel',{m:pick,t:now()}); return pick; }
+  }catch(e){}
+  return 'gemini-flash-latest';
+}
+async function aiGenerate(parts){
+  for(let att=0;att<2;att++){
+    const model=await geminiModel();
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts}]})});
+    const data=await r.json();
+    if(r.ok) return data.candidates?.[0]?.content?.parts?.map(p=>p.text).join('')||'';
+    const msg=data.error?.message||('HTTP '+r.status);
+    // モデル廃止・提供終了系のエラー → 自動選択をやり直してもう一度だけ試す
+    if(att===0&&/no longer available|not found|not supported|deprecated|retired/i.test(msg)){
+      _gmPick=null; LS.set('gmodel',null);
+      if(CFG.geminiModel){ CFG.geminiModel=''; LS.set('cfg',CFG); }
+      continue;
+    }
+    throw new Error(msg);
+  }
+}
 async function askAI(){
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
   if(!CFG.geminiKey){ toast('設定でGemini APIキーを入れてください'); openCfg(); return; }
   const out=$('#ai_out'); out.hidden=false; out.classList.add('loading'); out.textContent='考えています…';
   const prompt=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n\n${buildAIContext()}\n\n【質問】${q}`;
   try{
-    const model=CFG.geminiModel||'gemini-2.5-flash';
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
-    });
-    const data=await r.json();
-    if(!r.ok){ out.classList.remove('loading'); out.textContent='エラー: '+(data.error?.message||('HTTP '+r.status)); return; }
-    const txt=data.candidates?.[0]?.content?.parts?.map(p=>p.text).join('')||'（回答が空でした）';
-    out.classList.remove('loading'); out.textContent=txt;
-  }catch(e){ out.classList.remove('loading'); out.textContent='通信に失敗しました: '+e.message; }
+    const txt=await aiGenerate([{text:prompt}]);
+    out.classList.remove('loading'); out.textContent=txt||'（回答が空でした）';
+  }catch(e){ out.classList.remove('loading'); out.textContent='エラー: '+e.message; }
 }
 
 /* ============================================================ 設定 */
@@ -1530,6 +1569,13 @@ function renderMemList(){
 $('#c_memaddbtn').onclick=()=>{ const v=$('#c_memadd').value.trim(); if(!v)return; if(memEdit.some(m=>m.name===v)){toast('すでにいます');return;} memEdit.push({name:v,birthday:''}); $('#c_memadd').value=''; renderMemList(); refreshMeOptions(); };
 $('#c_memadd').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#c_memaddbtn').click();}});
 $('#c_keyon').onchange=()=>{ $('#c_keywrap').hidden=!$('#c_keyon').checked; };
+$('#c_syncnow').onclick=async()=>{
+  $('#c_syncinfo').textContent='同期しています…';
+  await syncNow();
+  const st={ok:'接続OK',err:'接続エラー',auth:'⚠合言葉が違います/未入力',off:'未共有'}[syncState]||'';
+  _lastSync=new Date().toLocaleTimeString();
+  $('#c_syncinfo').textContent=`完了 ${_lastSync}（アプリ v${APP_V}・${st}）`;
+};
 /* ロゴ画像（この端末に保存・自動縮小） */
 function applyLogo(){ const img=$('#brandLogo'); if(!img)return; if(CFG.logo){img.src=CFG.logo;img.style.display='block';img.nextElementSibling.style.display='none';} }
 function renderLogoBtns(){ $('#c_logo').style.display=CFG.logo?'none':''; $('#c_logodel').style.display=CFG.logo?'':'none'; $('#c_logoprev').innerHTML=CFG.logo?`<img src="${CFG.logo}"><span style="font-size:12px;color:var(--muted)">現在のマーク</span>`:''; }
@@ -1578,7 +1624,8 @@ function openCfg(){
   renderMemListRO(); paintAdmin();
   $('#c_url').value=CFG.url;
   $('#c_keyon').checked=!!CFG.appKey; $('#c_keywrap').hidden=!CFG.appKey; $('#c_key').value=CFG.appKey||'';
-  $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'gemini-2.5-flash';
+  $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'';
+  $('#c_syncinfo').textContent='アプリ v'+APP_V+(_lastSync?'・最終同期 '+_lastSync:'');
   $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
   refreshIcsField();
   renderPushUI();
@@ -1617,7 +1664,7 @@ $('#cfgOk').onclick=async()=>{
   const wasAdmin=isAdmin();
   if(wasAdmin){ // AIキー・モデル・メンバーは管理者のみ変更可
     CFG.geminiKey=$('#c_gkey').value.trim();
-    CFG.geminiModel=$('#c_gmodel').value.trim()||'gemini-2.5-flash';
+    CFG.geminiModel=$('#c_gmodel').value;
     CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||''})).filter(m=>m.name);
   }
   const chosen=$('#c_me').value;
@@ -1678,15 +1725,8 @@ $('#bk_pdffile').onchange=e=>{
     const b64=String(rd.result).split(',')[1];
     $('#bk_pdf').textContent='読み取っています…'; $('#bk_pdf').disabled=true;
     try{
-      const model=CFG.geminiModel||'gemini-2.5-flash';
       const prompt=`このPDFは大学の年間予定表です。日付が特定できる予定をすべて抜き出し、1行1件で「YYYY-MM-DD 内容」の形式だけで出力してください。期間の予定は初日の日付にしてください。説明文・前置き・記号は一切不要です。`;
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'application/pdf',data:b64}},{text:prompt}]}]})
-      });
-      const data=await r.json();
-      if(!r.ok) throw new Error(data.error?.message||('HTTP '+r.status));
-      const txt=(data.candidates?.[0]?.content?.parts?.map(p=>p.text).join('')||'').trim();
+      const txt=((await aiGenerate([{inline_data:{mime_type:'application/pdf',data:b64}},{text:prompt}]))||'').trim();
       const lines=txt.split('\n').map(s=>s.trim()).filter(s=>/^\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}\s/.test(s));
       if(!lines.length) throw new Error('日付つきの予定を読み取れませんでした');
       $('#bk_text').value=lines.join('\n');
@@ -1743,10 +1783,15 @@ function parseBulk(){
 }
 $('#bk_text').addEventListener('input',()=>{ const p=parseBulk(),el=$('#bk_prev'); if(!p.length){el.style.display='none';return;} el.style.display='block'; el.textContent=`${p.length}件を認識：`+p.slice(0,3).map(x=>x.date.slice(5)+(x.time?' '+x.time+(x.endTime?'〜'+x.endTime:''):'')+' '+x.title).join(' / ')+(p.length>3?' …':''); });
 $('#bkOk').onclick=()=>{
-  const parsed=parseBulk(); if(!parsed.length){ toast('日付ではじまる行がありません'); return; }
+  let parsed=parseBulk(); if(!parsed.length){ toast('日付ではじまる行がありません'); return; }
+  // すでに同じ内容名・日付・時刻があるものは除外（二重登録防止）
+  const all=parsed.length;
+  parsed=parsed.filter(p=>!liveItems().some(x=>x.type==='event'&&x.title===p.title&&x.date===p.date&&(x.time||'')===(p.time||'')));
+  const skipped=all-parsed.length;
+  if(!parsed.length){ toast('すべて登録済みでした（追加なし）'); $('#bulksheet').hidden=true; return; }
   const isOther=$('#bk_pj').value==='__other__', other=isOther?$('#bk_otherlabel').value.trim():'';
   if(isOther&&!other){ $('#bk_otherlabel').focus(); return; }
-  if(!confirm(`${parsed.length}件を登録します。よろしいですか？`)) return;
+  if(!confirm(`${parsed.length}件を登録します${skipped?`（${skipped}件は登録済みのため除外）`:''}。よろしいですか？`)) return;
   const ids=[],t0=now();
   parsed.forEach((p,idx)=>{ const id='i'+(t0+idx); DB.items.push({id,type:'event',pj:isOther?'':$('#bk_pj').value,other,title:p.title,date:p.date,time:p.time||'',endTime:p.endTime||'',who:[],team:'',visibility:'all',important:false,note:'',done:false,rep:'none',days:[],until:'',comments:[],createdBy:ME,updatedAt:t0+idx,deleted:false}); ids.push(id); });
   $('#bulksheet').hidden=true; toast(`${parsed.length}件を追加しました`); commit(ids);
@@ -1863,7 +1908,7 @@ async function syncNow(){
       DB=migrate(mergeInto(DB,remote));LS.set('db',DB);
       changed=JSON.stringify(DB)!==before;
     }
-    applyMeta(remote); setSync('ok');
+    applyMeta(remote); setSync('ok'); _lastSync=new Date().toLocaleTimeString();
     if(changed) renderSoon();   // 変化があったときだけ描き直す（操作中の「ボタンが効かない」を防ぐ）
     if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
   }
@@ -1887,7 +1932,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='24'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='25'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
@@ -1912,7 +1957,7 @@ setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); });
 window.addEventListener('online',syncNow);
 window.addEventListener('focus',()=>{ if(CFG.url)syncNow(); });
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').then(r=>{ try{r.update();}catch(e){} }).catch(()=>{}); }
 </script>
 </body>
 </html>
