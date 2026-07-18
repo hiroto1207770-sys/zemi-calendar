@@ -188,6 +188,30 @@ textarea{min-height:56px;resize:vertical;font-size:14px}
 .whopick button.on{background:var(--card-2);border-color:var(--ink);color:var(--ink)}
 /* タップの反応を良くする（ダブルタップ判定の待ち時間をなくす） */
 button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
+/* 週表示 */
+.wday{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;margin-bottom:9px;box-shadow:var(--sh-s)}
+.wday.wtoday{border-color:var(--brass)}
+.whead{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.whead b{font-size:13.5px}
+.wtoday .whead b{color:var(--brass-d)}
+.whol{color:#c2564f;font-size:11px;font-weight:700}
+.wadd{margin-left:auto;border:1px solid var(--line);background:var(--card-2);border-radius:8px;width:27px;height:27px;font-weight:700;color:var(--muted)}
+.wempty{font-size:12px;color:var(--faint);padding:2px 0 4px}
+.wday .item{box-shadow:none;margin-bottom:7px}
+/* 連続予定のつなぎ帯（2日目以降。最終日は矢じり） */
+.spanbar{display:block;height:6px;border-radius:2px;margin:3px 1px 0;opacity:.8}
+.spanbar.end{clip-path:polygon(0 0,calc(100% - 7px) 0,100% 50%,calc(100% - 7px) 100%,0 100%)}
+/* 初回チュートリアル */
+#tut{position:fixed;inset:0;z-index:300;background:rgba(30,32,30,.55);display:grid;place-items:center;padding:26px}
+#tut .tcard{background:var(--card);border-radius:18px;padding:24px 22px;max-width:340px;box-shadow:0 18px 50px rgba(0,0,0,.3)}
+#tut h3{font-family:'Zen Old Mincho',serif;font-size:18px;margin-bottom:10px}
+#tut p{font-size:13.5px;line-height:1.8;color:var(--muted);min-height:110px}
+#tut .tdots{display:flex;gap:6px;justify-content:center;margin:12px 0}
+#tut .tdots span{width:7px;height:7px;border-radius:50%;background:var(--line)}
+#tut .tdots span.on{background:var(--brass)}
+#tut button{width:100%;border:none;border-radius:12px;padding:12px;font-weight:700;background:var(--brandbg);color:#fff}
+/* トーストの「元に戻す」 */
+.toast button{margin-left:10px;border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:8px;padding:4px 10px;font-weight:700;font-size:12px}
 /* 過去の予定からの候補チップ */
 .sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .sugg button{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--muted);background:var(--card-2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -314,13 +338,14 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <section id="v-cal" hidden>
     <div class="calhead">
       <div class="m" id="ym" title="タップで今日の月へ"></div>
-      <div class="nav"><button id="prev">‹</button><button id="next">›</button></div>
+      <div class="nav"><button id="cmode" title="月表示と週表示の切りかえ">週</button><button id="prev">‹</button><button id="next">›</button></div>
     </div>
-    <div class="grid">
+    <div class="grid" id="calgrid">
       <div class="dow"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>
       <div class="days" id="days"></div>
     </div>
-    <div class="panel"><h2 class="sec" id="dayTitle">—</h2><div id="dayList"></div></div>
+    <div id="weeklist" hidden></div>
+    <div class="panel" id="daypanel"><h2 class="sec" id="dayTitle">—</h2><div id="dayList"></div></div>
   </section>
   <section id="v-todo" hidden>
     <div class="calhead"><div class="m" style="font-size:17px">やること</div>
@@ -333,6 +358,13 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 
 <button class="fab" id="add"><span class="plus">＋</span>追加</button>
 <div class="toast" id="toast"></div>
+
+<!-- 初回チュートリアル（3枚） -->
+<div id="tut" hidden><div class="tcard">
+  <h3 id="tutTitle"></h3><p id="tutBody"></p>
+  <div class="tdots" id="tutDots"></div>
+  <button id="tutNext">次へ</button>
+</div></div>
 
 <!-- 追加/編集 -->
 <div class="sheet" id="sheet" hidden><div class="box">
@@ -375,6 +407,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     </div>
     <div id="w_days" hidden><label>くり返す曜日（毎週・隔週）</label><div class="whopick" id="f_days"></div></div>
   </div>
+  <div id="w_alsotask" hidden><label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="f_alsotask" style="width:auto">「やること」にも追加する（期限＝予定の日）</label></div>
   <label>通知のタイミング（毎朝の通知に入れる日）</label>
   <select id="f_remind">
     <option value="">標準（予定＝当日の朝／やること＝前日・当日・期限超過）</option>
@@ -384,8 +417,12 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <option value="7">1週間前から</option>
     <option value="none">通知しない</option>
   </select>
-  <label>メモ・リンク</label>
+  <label>メモ・リンク<span id="l_noteSub" hidden style="font-weight:600;color:var(--muted)">（毎回の予定すべてに表示）</span></label>
   <textarea id="f_note" placeholder="スライドのURLなど"></textarea>
+  <div id="w_onote" hidden>
+    <label>この回だけのメモ・リンク（<span id="onoteDate"></span> のみに表示）</label>
+    <textarea id="f_onote" placeholder="この回だけの持ち物・発表資料のURLなど"></textarea>
+  </div>
   <label>公開範囲</label>
   <div class="seg" id="f_vis">
     <button type="button" data-v="all" class="on">全体公開</button>
@@ -402,7 +439,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   </div>
   <div class="acts"><button class="no" id="cancel">やめる</button><button class="go" id="save">保存する</button></div>
   <div class="acts" id="shareWrap" hidden style="margin-top:8px"><button class="no" id="shareBtn" style="flex:1">📤 共有</button></div>
-  <div class="acts" id="delWrap" hidden style="margin-top:8px"><button class="no" id="del" style="color:var(--warn);border-color:#e6cbc4">削除する</button></div>
+  <div class="acts" id="delWrap" hidden style="margin-top:8px"><button class="no" id="delOne" hidden style="color:var(--warn);border-color:#e6cbc4">この回だけ削除</button><button class="no" id="del" style="color:var(--warn);border-color:#e6cbc4">削除する</button></div>
 </div></div>
 
 <!-- プロジェクト＆係の編集（色・チーム） -->
@@ -447,12 +484,13 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 <!-- AI -->
 <div class="sheet" id="aisheet" hidden><div class="box">
   <div class="grab"></div>
-  <h3>AIにきく</h3>
-  <p class="help">今の予定・締切・プロジェクトの状況をAIがまとめます。Gemini（無料枠）を使います。キーは設定から。</p>
+  <h3>AI</h3>
+  <p class="help">予定・締切・プロジェクトの状況をAIに聞けます。「明日の15時から17時にバイト入れて」のように頼むと予定の追加もできます（追加前に確認が出ます）。</p>
   <div class="aiquick" id="ai_quick"></div>
   <textarea id="ai_q" placeholder="例：今週やるべきことを教えて／大正製薬の状況は？"></textarea>
   <div class="acts"><button class="no" id="aiClose">とじる</button><button class="go" id="aiAsk">きく</button></div>
   <div class="aibubble" id="ai_out" hidden></div>
+  <div class="acts" id="ai_addwrap" hidden><button class="go" id="ai_addbtn" style="flex:1"></button></div>
 </div></div>
 
 <!-- まとめて追加（年間予定など） -->
@@ -492,6 +530,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <button type="button" data-t="dark">ダーク</button>
     <button type="button" data-t="auto">自動</button>
   </div>
+  <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="c_span" style="width:auto">何日も続く予定をカレンダーで ➡ でつなげて表示</label>
 
   <div class="sec" style="margin-top:22px">共有と同期</div>
   <div class="acts" style="margin:4px 0 8px"><button class="no" id="c_syncnow" type="button" style="flex:1">🔄 いま同期する</button></div>
@@ -563,7 +602,6 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <input type="file" id="c_file" accept="application/json,.json" hidden>
   <p class="help">全データをファイルに保存・復元できます。共有中はスプレッドシートの版履歴も常時バックアップです。</p>
   <div class="acts"><button class="no" id="cfgNo">やめる</button><button class="go" id="cfgOk">保存する</button></div>
-  <div class="acts" style="margin-top:8px"><button class="no" id="cfgReload" style="flex:1">今すぐ同期</button></div>
 </div></div>
 
 <script>
@@ -661,23 +699,26 @@ function migrate(db){
     return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams,members:Array.isArray(p.members)?p.members:[]};
   });
   db.items=(db.items||[]).map(i=>({
-    who:[],team:'',other:'',visibility:'all',important:false,note:'',remind:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',createdBy:'',updatedAt:t,deleted:false,...i,
+    who:[],team:'',teamPj:'',other:'',visibility:'all',important:false,note:'',remind:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',skip:[],notes:{},createdBy:'',updatedAt:t,deleted:false,...i,
     who:Array.isArray(i.who)?i.who:(i.who?[i.who]:[]),
     days:Array.isArray(i.days)?i.days:[],
-    comments:Array.isArray(i.comments)?i.comments:[]
+    comments:Array.isArray(i.comments)?i.comments:[],
+    skip:Array.isArray(i.skip)?i.skip:[],
+    notes:(i.notes&&typeof i.notes==='object'&&!Array.isArray(i.notes))?i.notes:{}
   }));
   return db;
 }
 
 /* ------------------ サーバAPI ------------------ */
 async function apiPost(body){
-  body.key=CFG.appKey||'';
+  body.key=CFG.appKey||''; body.me=ME||'';   // 誰の操作かの記録用（logシート）
   const r=await fetch(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
   if(!r.ok) throw new Error('HTTP '+r.status);
   const j=await r.json(); if(j&&j.error) throw new Error(j.error); return j;
 }
+let _booted=false;   // アプリを開いた記録は起動時の1回だけサーバに残す
 const API = {
-  async load(){ const r=await fetch(CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):''),{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); const j=await r.json(); if(j&&j.error) throw new Error(j.error); return j; },
+  async load(){ const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+'&me='+encodeURIComponent(ME||'')+(_booted?'':'&boot=1'); const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); const j=await r.json(); if(j&&j.error) throw new Error(j.error); _booted=true; return j; },
   async merge(changed){ return apiPost({action:'merge',changed}); }
 };
 function mergeInto(local,remote){
@@ -690,7 +731,7 @@ function mergeInto(local,remote){
 const z=n=>String(n).padStart(2,'0');
 const ymd=d=>`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
 const TODAY=ymd(new Date());
-let view='home',cur=new Date(),sel=TODAY,filter=null,teamFilter=null,mineOnly=false,showDone=false,editing=null;
+let view='home',cur=new Date(),sel=TODAY,filter=null,teamFilter=null,mineOnly=false,showDone=false,editing=null,editingDate=null;
 let statusFilter=null,openProg=null,openTeam=null;   // 数値タップの絞り込み／進捗・チームの開いているアコーディオン
 let syncState='off',pending=[],_lastSync='';
 
@@ -705,7 +746,7 @@ const isMine=i=>ME&&i.who&&i.who.includes(ME);
 // チームのメンバーか（チーム未登録メンバーの場合は作成者・担当者のみ）
 // チーム名からメンバーを引く。チーム分けの無い係は「係名＝係全体のチーム」として担当メンバーを返す
 const teamMembers=(pid,tname)=>{const p=pj(pid);const tm=(p.teams||[]).find(t=>t.name===tname);if(tm)return tm.members||[];return p.name===tname?(p.members||[]):[];};
-const inTeam=i=>!!ME&&(teamMembers(i.pj,i.team).includes(ME)||(i.who||[]).includes(ME)||i.createdBy===ME);
+const inTeam=i=>!!ME&&(teamMembers(i.teamPj||i.pj,i.team).includes(ME)||(i.who||[]).includes(ME)||i.createdBy===ME);
 /* 表示ルール：
    ・全体公開かつチームなし → 全員に表示
    ・チーム指定あり → そのチームに登録されたメンバー（＋担当・作成者）だけに表示
@@ -723,6 +764,7 @@ const groupWide=i=>i.visibility!=='members' && !i.team;
 const teamColor=(pid,name)=>{const p=pj(pid);const tm=(p.teams||[]).find(t=>t.name===name);return tm?tm.color:p.color;};
 
 function occursOn(i,key){
+  if(i.skip&&i.skip.includes(key)) return false;   // 「この回だけ削除」した日
   if(i.date===key) return true;
   if(i.type!=='event'||!i.rep||i.rep==='none') return false;
   if(key<i.date) return false;
@@ -811,7 +853,7 @@ function renderHome(){
       <button class="stat ok" data-stat="done"><b>${doneTasks.length}</b><span>完了済み</span></button>
     </div></div>`;
   h+=`<div class="toolrow">
-      <button id="tAI"><span class="ic">✨</span>AIにきく</button>
+      <button id="tAI"><span class="ic">✨</span>AI</button>
       <button id="tNotif"><span class="ic">🔔</span>通知の設定</button>
     </div>`;
   if(GOALS.zemi||GOALS.gen){
@@ -888,21 +930,35 @@ function bindProg(sc){
   });
 }
 
+let calMode='m';   // 'm'=月 / 'w'=週
 function renderCal(){
+  if(calMode==='w'){ renderWeek(); return; }
+  $('#calgrid').hidden=false; $('#weeklist').hidden=true; $('#daypanel').hidden=false; $('#cmode').textContent='週';
   const y=cur.getFullYear(),m=cur.getMonth();
   $('#ym').innerHTML=`${y}<small>年</small>${m+1}<small>月</small>`;
   const first=new Date(y,m,1),start=new Date(first);start.setDate(1-first.getDay());
+  // 何日も続く予定を ➡ でつなぐ（設定でON/OFF）。「同じ内容名＋同じ時刻の予定が前日にもある」＝続きとみなす
+  const spans=CFG.spanArrow!==false;
+  const addD=(k,n)=>{const dd=new Date(k+'T00:00');dd.setDate(dd.getDate()+n);return ymd(dd);};
+  const sigOf=x=>x.title+'|'+(x.time||'');
+  const evSigs=k2=>new Set(itemsOn(k2).filter(x=>x.type==='event').map(sigOf));
   let h='';
   for(let k=0;k<42;k++){
     const d=new Date(start);d.setDate(start.getDate()+k);
     const key=ymd(d),out=d.getMonth()!==m,hol=holiday(key),bd=bdaysOn(key);
     const list=itemsOn(key);
+    const prevS=spans?evSigs(addD(key,-1)):new Set(), nextS=spans?evSigs(addD(key,1)):new Set();
     const cap=Math.max(1,3-(hol?1:0)-(bd.length?1:0));
     h+=`<button class="day ${out?'out':''} ${key===TODAY?'today':''} ${key===sel?'sel':''} ${hol?'hol':''}" data-d="${key}">
       <span class="n">${d.getDate()}</span>
       ${hol?`<span class="holname">${esc(hol)}</span>`:''}
       ${bd.length?`<span class="bdname">🎂${esc(bd.join('・'))}</span>`:''}
-      ${list.slice(0,cap).map(i=>`<span class="pill ${i.type==='event'?'ev':''} ${i.done?'done':''}" style="${i.type==='event'?`--pc:${catOf(i).color}`:`background:${i.team?teamColor(i.pj,i.team):catOf(i).color}`}">${esc(i.title)}</span>`).join('')}
+      ${list.slice(0,cap).map(i=>{
+        if(spans&&i.type==='event'&&prevS.has(sigOf(i)))
+          return `<span class="spanbar ${nextS.has(sigOf(i))?'':'end'}" style="background:${catOf(i).color}"></span>`; // 2日目以降＝つなぎの帯
+        const arrow=spans&&i.type==='event'&&nextS.has(sigOf(i))?'➡':'';
+        return `<span class="pill ${i.type==='event'?'ev':''} ${i.done?'done':''}" style="${i.type==='event'?`--pc:${catOf(i).color}`:`background:${i.team?teamColor(i.teamPj||i.pj,i.team):catOf(i).color}`}">${esc(i.title)}${arrow}</span>`;
+      }).join('')}
       ${list.length>cap?`<span class="more">+${list.length-cap}</span>`:''}
     </button>`;
     if(k>=34&&d.getMonth()!==m&&d.getDay()===6) break;
@@ -911,6 +967,26 @@ function renderCal(){
   $('#days').querySelectorAll('.day').forEach(b=>b.onclick=()=>{ sel=b.dataset.d; renderCal(); });
   renderDay();
 }
+/* 週表示：日曜はじまりの7日をリストで縦に並べる（時間割の確認用） */
+function renderWeek(){
+  $('#calgrid').hidden=true; $('#weeklist').hidden=false; $('#daypanel').hidden=true; $('#cmode').textContent='月';
+  const base=new Date(sel+'T00:00'); base.setDate(base.getDate()-base.getDay());
+  const end=new Date(base); end.setDate(base.getDate()+6);
+  $('#ym').innerHTML=`${base.getMonth()+1}/${base.getDate()}<small>〜</small>${end.getMonth()+1}/${end.getDate()}<small> の週</small>`;
+  let h='';
+  for(let k=0;k<7;k++){
+    const d=new Date(base); d.setDate(base.getDate()+k);
+    const key=ymd(d), w='日月火水木金土'[d.getDay()], hol=holiday(key), bd=bdaysOn(key), list=itemsOn(key);
+    h+=`<div class="wday ${key===TODAY?'wtoday':''}">
+      <div class="whead"><b>${d.getMonth()+1}/${d.getDate()}（${w}）</b>${hol?`<span class="whol">${esc(hol)}</span>`:''}<button class="wadd" data-wadd="${key}" title="この日に追加">＋</button></div>
+      ${bd.map(bdayCard).join('')}
+      ${list.length?list.map(i=>card(i,key)).join(''):'<div class="wempty">予定なし</div>'}
+    </div>`;
+  }
+  $('#weeklist').innerHTML=h; bind('#weeklist');
+  $('#weeklist').querySelectorAll('[data-wadd]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); sel=b.dataset.wadd; openSheet(null); });
+}
+function shiftWeek(n){ const d=new Date(sel+'T00:00'); d.setDate(d.getDate()+n); sel=ymd(d); cur=new Date(d.getFullYear(),d.getMonth(),1); renderCal(); }
 function renderDay(){
   const d=new Date(sel+'T00:00');const w='日月火水木金土'[d.getDay()];
   const list=itemsOn(sel);const hol=holiday(sel);const bd=bdaysOn(sel);
@@ -958,8 +1034,10 @@ function card(i,dateKey){
   const repLab=(i.rep&&i.rep!=='none')?`<span class="rep">🔁${REPLABEL[i.rep]||''}</span>`:'';
   const cc=(i.comments&&i.comments.length)?`<span class="cbadge">💬${i.comments.length}</span>`:'';
   const whoHtml=(i.who||[]).map(x=>`<span class="who ${x===ME?'me':''}">${esc(dispName(x))}</span>`).join('');
-  const teamHtml=i.team?`<span class="tmg" style="background:${teamColor(i.pj,i.team)}">${esc(i.team)}</span>`:'';
-  return `<div class="item ${i.done?'done':''}" data-id="${i.id}">
+  const teamHtml=i.team?`<span class="tmg" style="background:${teamColor(i.teamPj||i.pj,i.team)}">${esc(i.team)}</span>`:'';
+  const on=(i.notes&&i.notes[key])||'';                       // この回だけのメモ
+  const onUrl=on?String(on).match(/https?:\/\/\S+/):null;
+  return `<div class="item ${i.done?'done':''}" data-id="${i.id}" data-date="${key}">
     <span class="bar" style="background:${p.color}"></span>
     ${i.type==='task'?`<button class="check ${i.done?'on':''}" data-done="${i.id}">✓</button>`:`<span class="tm" style="background:${p.color}">${i.time||'終日'}</span>`}
     <div class="body">
@@ -974,6 +1052,8 @@ function card(i,dateKey){
       </div>
       ${i.note&&!url?`<div class="note">${esc(i.note)}</div>`:''}
       ${url?`<a class="lnk" href="${url[0]}" target="_blank" rel="noopener">${esc(url[0])}</a>`:''}
+      ${on&&!onUrl?`<div class="note">📌 ${esc(on)}</div>`:''}
+      ${onUrl?`<div class="note">📌 ${esc(on.replace(onUrl[0],'').trim())} <a class="lnk" href="${onUrl[0]}" target="_blank" rel="noopener">${esc(onUrl[0])}</a></div>`:''}
     </div></div>`;
 }
 function bind(sc){
@@ -981,7 +1061,7 @@ function bind(sc){
   // カードのどこをタップしても開ける（チェック・リンクは除く）
   document.querySelectorAll(sc+' .item[data-id]').forEach(el=>el.onclick=e=>{
     if(e.target.closest('[data-done]')||e.target.closest('a')) return;
-    openSheet(el.dataset.id);
+    openSheet(el.dataset.id, el.dataset.date);
   });
 }
 function render(){
@@ -1024,7 +1104,10 @@ async function flush(){
 function setSync(s){ syncState=s; renderSync(); }
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 let toastT;
-function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),1800); }
+function toast(m,undoFn){ const t=$('#toast');
+  if(undoFn){ t.innerHTML=esc(m)+'<button id="toastUndo">元に戻す</button>'; $('#toastUndo').onclick=()=>{ t.classList.remove('on'); undoFn(); }; }
+  else t.textContent=m;
+  t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),undoFn?6000:1800); }
 
 /* ============================================================ 入力シート */
 let kind='task',pickedWho=[],pickedDays=[],vis='all';
@@ -1042,39 +1125,63 @@ function paintDays(){ $('#f_days').querySelectorAll('button').forEach(b=>b.class
 function updateRepDays(){ const r=$('#f_rep').value; $('#w_days').hidden=!(kind==='event'&&(r==='weekly'||r==='biweekly')); }
 function updateAllday(){ const on=$('#f_allday').checked; $('#w_times').style.display=on?'none':'flex'; }
 function fillWho(){
-  $('#f_who').innerHTML=CFG.members.map(m=>`<button type="button" data-w="${esc(m.name)}">${esc(m.name)}</button>`).join('')||`<span style="font-size:12px;color:var(--faint)">メンバー未登録（設定から）</span>`;
-  $('#f_who').querySelectorAll('button').forEach(b=>b.onclick=()=>{const w=b.dataset.w,k=pickedWho.indexOf(w);if(k<0)pickedWho.push(w);else pickedWho.splice(k,1);b.classList.toggle('on',pickedWho.includes(w));});
+  $('#f_who').innerHTML=`<button type="button" data-w="__all__">👥 全員</button>`
+    +(CFG.members.map(m=>`<button type="button" data-w="${esc(m.name)}">${esc(m.name)}</button>`).join('')||`<span style="font-size:12px;color:var(--faint)">メンバー未登録（設定から）</span>`);
+  $('#f_who').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    const w=b.dataset.w;
+    if(w==='__all__'){ // 全員を一発で選ぶ／全解除
+      pickedWho = pickedWho.length===CFG.members.length ? [] : CFG.members.map(m=>m.name);
+      paintWho(); return;
+    }
+    const k=pickedWho.indexOf(w); if(k<0)pickedWho.push(w); else pickedWho.splice(k,1); paintWho();
+  });
 }
+/* 公開範囲チーム限定：どのプロジェクト＆係のチームでも選べる（チーム分けの無い係は係全体を1チーム扱い） */
 function fillTeamSelect(pid,selected){
-  const p=(pid&&pid!=='__other__')?DB.projects.find(x=>x.id===pid):null;
-  const teams=(p&&p.teams)||[];
   $('#w_team').hidden = vis!=='team';   // 「チーム限定」を選んだときだけ表示
-  if(teams.length){
-    $('#f_team').innerHTML = teams.map(t=>`<option value="${esc(t.name)}" ${t.name===selected?'selected':''}>${esc(t.name)}（${(t.members||[]).length}人だけに表示）</option>`).join('');
-  } else if(p&&(p.members||[]).length){
-    // チーム分けしていない係は、係そのものを選べる（担当メンバーだけに表示）
-    $('#f_team').innerHTML = `<option value="${esc(p.name)}" selected>${esc(p.name)}（担当の${(p.members||[]).length}人だけに表示）</option>`;
-  } else {
-    $('#f_team').innerHTML = `<option value="">（チームも担当メンバーも未登録。プロジェクト＆係の「✎ 編集」から設定できます）</option>`;
-  }
+  const cur=selected||'';
+  let h='';
+  activeProjects().forEach(p=>{
+    if((p.teams||[]).length){
+      h+=`<optgroup label="${esc(p.name)}">`+p.teams.map(t=>{
+        const v=p.id+'::'+t.name;
+        return `<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(t.name)}（${(t.members||[]).length}人）</option>`;
+      }).join('')+`</optgroup>`;
+    } else if((p.members||[]).length){
+      const v=p.id+'::'+p.name;
+      h+=`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(p.name)}（係全体・${(p.members||[]).length}人）</option>`;
+    }
+  });
+  $('#f_team').innerHTML = h || `<option value="">（チームも担当メンバーも未登録。プロジェクト＆係の「✎ 編集」から設定できます）</option>`;
 }
-function paintWho(){ $('#f_who').querySelectorAll('button').forEach(b=>b.classList.toggle('on',pickedWho.includes(b.dataset.w))); }
+function paintWho(){
+  const all=CFG.members.length&&pickedWho.length===CFG.members.length;
+  $('#f_who').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.w==='__all__'?all:pickedWho.includes(b.dataset.w)));
+}
 function setKind(k){
   kind=k;
   document.querySelectorAll('#kind button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
   $('#w_time').hidden=k!=='event'; $('#w_rep').hidden=k!=='event'; $('#w_who').hidden=false;
+  $('#w_alsotask').hidden=k!=='event'||!!editing;
   $('#l_date').textContent=k==='task'?'期限':'日付';
   updateRepDays();
-  fillTeamSelect($('#f_pj').value,editing?editing.team:'');
+  fillTeamSelect($('#f_pj').value, editing&&editing.team?((editing.teamPj||editing.pj)+'::'+editing.team):'');
 }
 $('#f_rep').onchange=updateRepDays;
 $('#f_allday').onchange=updateAllday;
-function openSheet(id){
+function openSheet(id,dateKey){
   editing=id?DB.items.find(i=>i.id===id):null;
+  editingDate=dateKey||(editing?editing.date:null);
   $('#sheetTitle').textContent=editing?'なおす':'追加する';
   $('#delWrap').hidden=!editing;
   $('#shareWrap').hidden=!editing;
   $('#toBulk').hidden=!!editing;
+  // くり返し予定は「この回だけ」の削除・メモができる
+  const rec=!!(editing&&editing.type==='event'&&editing.rep&&editing.rep!=='none'&&editingDate);
+  $('#w_onote').hidden=!rec; $('#l_noteSub').hidden=!rec;
+  if(rec){ $('#onoteDate').textContent=editingDate.slice(5).replace('-','/'); $('#f_onote').value=(editing.notes||{})[editingDate]||''; } else { $('#f_onote').value=''; }
+  $('#delOne').hidden=!rec; $('#del').textContent=rec?'すべての回を削除':'削除する';
+  $('#f_alsotask').checked=false;
   const pjOpts=activeProjects();
   if(editing&&editing.pj&&!pjOpts.some(p=>p.id===editing.pj)){ const ep=DB.projects.find(p=>p.id===editing.pj&&!p.deleted); if(ep)pjOpts.unshift(ep); } // 編集中の予定が完了済み案件に属していても選べるように
   $('#f_pj').innerHTML=pjOpts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.done?'（完了済み）':''}</option>`).join('')+`<option value="__other__">その他（プロジェクトなし・自由入力）</option>`;
@@ -1099,7 +1206,7 @@ function openSheet(id){
   $('#f_note').value=editing?.note||'';
   $('#f_remind').value=editing?.remind||'';
   updateRepDays();
-  fillTeamSelect($('#f_pj').value,editing?editing.team:'');
+  fillTeamSelect($('#f_pj').value, editing&&editing.team?((editing.teamPj||editing.pj)+'::'+editing.team):'');
   renderComments(); $('#cmtWrap').hidden=!editing;
   renderSugg();
   $('#sheet').hidden=false;
@@ -1130,7 +1237,7 @@ function applySugg(id){
   }
   $('#f_other').value=s.other||'';
   vis=s.visibility==='members'?'members':(s.team?'team':'all'); paintVis();
-  fillTeamSelect($('#f_pj').value,s.team||'');
+  fillTeamSelect($('#f_pj').value, s.team?((s.teamPj||s.pj)+'::'+s.team):'');
   pickedWho=[...(s.who||[])]; paintWho();
   $('#f_time').value=s.time||''; $('#f_end').value=s.endTime||'';
   if(s.type==='event'){ $('#f_allday').checked=!s.time; updateAllday(); }
@@ -1141,13 +1248,16 @@ function applySugg(id){
 $('#f_title').addEventListener('input',renderSugg);
 function renderComments(){
   if(!editing){$('#cmtList').innerHTML='';return;}
-  const cs=editing.comments||[]; $('#cmtCnt').textContent=cs.length;
+  // くり返し予定のコメントはその回（日付）ごと。日付なしの古いコメントは全部の回に出す
+  const rec=editing.type==='event'&&editing.rep&&editing.rep!=='none';
+  const cs=(editing.comments||[]).filter(c=>!rec||!c.d||c.d===editingDate); $('#cmtCnt').textContent=cs.length;
   $('#cmtList').innerHTML=cs.map(c=>`<div class="cmt"><b>${esc(dispName(c.by)||'メンバー')}</b><span class="at">${esc(c.at||'')}</span><p>${esc(c.text)}</p></div>`).join('')||`<div style="font-size:12px;color:var(--faint);padding:2px 0 6px">まだコメントはありません</div>`;
 }
 $('#cmtSend').onclick=()=>{
   const v=$('#cmtInput').value.trim();if(!v||!editing)return;
   const d=new Date(); editing=freshItem(editing);
-  editing.comments.push({by:ME||'メンバー',text:v,at:`${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`});
+  editing.comments.push({by:ME||'メンバー',text:v,at:`${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`,
+    d:(editing.rep&&editing.rep!=='none')?editingDate:''});   // くり返し予定はその回だけに付く
   editing.updatedAt=now();$('#cmtInput').value='';renderComments();commit([editing.id]);
 };
 $('#cmtInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('#cmtSend').click();});
@@ -1161,11 +1271,13 @@ $('#save').onclick=()=>{
   const isEv=kind==='event', allday=isEv&&$('#f_allday').checked, rep=isEv?$('#f_rep').value:'none';
   const pjv=$('#f_pj').value, isOther=pjv==='__other__';
   if(isOther&&!$('#f_other').value.trim()){ $('#f_other').focus(); return; }
-  if(vis==='team'&&(isOther||!$('#f_team').value)){ toast('チーム限定には、プロジェクト＆係にチームの登録が必要です'); return; }
+  const tv=(vis==='team')?($('#f_team').value||''):'';
+  if(vis==='team'&&!tv){ toast('チーム限定にするには、プロジェクト＆係にチームか担当メンバーの登録が必要です'); return; }
+  const tsp=tv?tv.split('::'):['',''];
   if(vis==='members'&&!pickedWho.length){ toast('個人指定は「担当・共有する人」を選んでください'); return; }
   const o={type:kind,pj:isOther?'':pjv,other:isOther?$('#f_other').value.trim():'',title:t,date:$('#f_date').value||TODAY,
     time:isEv&&!allday?$('#f_time').value:'', endTime:isEv&&!allday?$('#f_end').value:'',
-    who:pickedWho.slice(),team:(vis==='team'&&!isOther)?$('#f_team').value:'',
+    who:pickedWho.slice(),team:tsp[1]||'',teamPj:tsp[1]?tsp[0]:'',
     visibility:vis==='members'?'members':'all', important:$('#f_imp').checked,
     rep, days:(rep==='weekly'||rep==='biweekly')?pickedDays.slice():[],
     until:isEv?$('#f_until').value:'',note:$('#f_note').value.trim(),remind:$('#f_remind').value,updatedAt:now()};
@@ -1175,10 +1287,37 @@ $('#save').onclick=()=>{
     if(dup&&!confirm('同じ内容名・同じ日付のものがすでに登録されています。\nそれでも追加しますか？')) return;
   }
   let id;
-  if(editing){const t=freshItem(editing);Object.assign(t,o);id=t.id;} else {id='i'+now();DB.items.push({id,done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,...o});}
-  $('#sheet').hidden=true;sel=o.date;toast(editing?'更新しました':'追加しました');commit([id]);
+  if(editing){const t=freshItem(editing);Object.assign(t,o);id=t.id;} else {id='i'+now();DB.items.push({id,done:false,doneAt:0,createdBy:ME,comments:[],skip:[],notes:{},deleted:false,...o});}
+  // くり返し予定の「この回だけのメモ」
+  const rec2=DB.items.find(x=>x.id===id);
+  if(rec2&&editing&&!$('#w_onote').hidden&&editingDate){
+    rec2.notes=(rec2.notes&&typeof rec2.notes==='object')?rec2.notes:{};
+    const ov=$('#f_onote').value.trim();
+    if(ov) rec2.notes[editingDate]=ov; else delete rec2.notes[editingDate];
+  }
+  // 予定を「やること」にも同時追加
+  const extra=[];
+  if(!editing&&isEv&&$('#f_alsotask').checked){
+    const tid='i'+(now()+1);
+    DB.items.push({id:tid,type:'task',pj:o.pj,other:o.other,title:o.title,date:o.date,time:'',endTime:'',who:o.who.slice(),
+      team:o.team,teamPj:o.teamPj,visibility:o.visibility,important:o.important,rep:'none',days:[],until:'',note:o.note,
+      remind:o.remind,skip:[],notes:{},done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,updatedAt:now()+1});
+    extra.push(tid);
+  }
+  $('#sheet').hidden=true;sel=o.date;toast(editing?'更新しました':(extra.length?'予定とやることに追加しました':'追加しました'));commit([id,...extra]);
 };
-$('#del').onclick=()=>{ if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;toast('削除しました');commit([id]); };
+/* くり返し予定の「この回だけ削除」（skipに日付を積む） */
+$('#delOne').onclick=()=>{
+  if(!editing||!editingDate)return;
+  if(!confirm(editingDate.slice(5).replace('-','/')+' のこの回だけ削除します。よろしいですか？'))return;
+  const tg=freshItem(editing); tg.skip=Array.isArray(tg.skip)?tg.skip:[];
+  if(!tg.skip.includes(editingDate)) tg.skip.push(editingDate);
+  tg.updatedAt=now(); const id=tg.id, dk=editingDate;
+  $('#sheet').hidden=true; commit([id]);
+  toast('この回だけ削除しました',()=>{ const x=DB.items.find(i=>i.id===id); if(x){ x.skip=(x.skip||[]).filter(d=>d!==dk); x.updatedAt=now(); commit([id]); toast('元に戻しました'); } });
+};
+$('#del').onclick=()=>{ if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;commit([id]);
+  toast('削除しました',()=>{ const x=DB.items.find(i=>i.id===id); if(x){ x.deleted=false; x.updatedAt=now(); commit([id]); toast('元に戻しました'); } }); };
 // LINE等への共有（iPhone/Androidは共有シート、PCはLINEの共有ページを開く）
 $('#shareBtn').onclick=async()=>{
   if(!editing)return; const i=editing, p=catOf(i);
@@ -1280,7 +1419,10 @@ $('#pjDel').onclick=()=>{
   const changed=[t.id];t.deleted=true;t.updatedAt=now();
   DB.items.filter(i=>i.pj===t.id&&!i.deleted).forEach(i=>{i.deleted=true;i.updatedAt=now();changed.push(i.id);});
   if(filter===t.id){filter=null;teamFilter=null;}
-  $('#pjsheet').hidden=true;toast('削除しました');commit(changed);
+  $('#pjsheet').hidden=true;commit(changed);
+  toast('削除しました',()=>{ const ids=changed.slice();
+    ids.forEach(id=>{ const x=DB.projects.find(p=>p.id===id)||DB.items.find(i=>i.id===id); if(x){ x.deleted=false; x.updatedAt=now(); } });
+    commit(ids); toast('元に戻しました'); });
 };
 
 /* ============================================================ 検索 */
@@ -1450,16 +1592,49 @@ async function aiGenerate(parts){
     throw new Error(msg);
   }
 }
+/* AIの回答から「予定追加の提案」ブロックを取り出す */
+let _aiAdds=[];
+function aiExtractAdds(txt){
+  const m=String(txt||'').match(/```json\s*([\s\S]*?)```/);
+  if(!m) return {clean:txt,adds:[]};
+  let adds=[]; try{ const o=JSON.parse(m[1]); adds=Array.isArray(o.add)?o.add:[]; }catch(e){}
+  adds=adds.filter(a=>a&&a.title&&/^\d{4}-\d{2}-\d{2}$/.test(a.date||''))
+    .map(a=>({type:a.type==='task'?'task':'event',title:String(a.title).slice(0,100),date:a.date,
+      time:/^\d{2}:\d{2}$/.test(a.time||'')?a.time:'',endTime:/^\d{2}:\d{2}$/.test(a.endTime||'')?a.endTime:''}));
+  return {clean:String(txt).replace(m[0],'').trim(), adds};
+}
 async function askAI(){
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
   if(!CFG.geminiKey){ toast('設定でGemini APIキーを入れてください'); openCfg(); return; }
   const out=$('#ai_out'); out.hidden=false; out.classList.add('loading'); out.textContent='考えています…';
-  const prompt=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n\n${buildAIContext()}\n\n【質問】${q}`;
+  $('#ai_addwrap').hidden=true; _aiAdds=[];
+  const prompt=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n`
+    +`もしユーザーが予定・タスクの追加を頼んでいる場合は、回答文の最後に次の形式のブロックを1つだけ付けてください（追加の依頼でなければ絶対に付けないこと）：\n`
+    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}]}\n```\n'
+    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数日・複数件はaddの配列に全部入れる。\n\n${buildAIContext()}\n\n【質問】${q}`;
   try{
-    const txt=await aiGenerate([{text:prompt}]);
-    out.classList.remove('loading'); out.textContent=txt||'（回答が空でした）';
+    const raw=await aiGenerate([{text:prompt}]);
+    const {clean,adds}=aiExtractAdds(raw);
+    out.classList.remove('loading'); out.textContent=clean||(adds.length?'予定の追加を提案します。':'（回答が空でした）');
+    if(adds.length){ _aiAdds=adds; $('#ai_addbtn').textContent=`📅 この内容で${adds.length}件追加する`; $('#ai_addwrap').hidden=false; }
   }catch(e){ out.classList.remove('loading'); out.textContent='エラー: '+e.message; }
 }
+$('#ai_addbtn').onclick=()=>{
+  if(!_aiAdds.length) return;
+  const lines=_aiAdds.map(a=>`・${a.date}${a.time?' '+a.time+(a.endTime?'〜'+a.endTime:''):''} ${a.title}${a.type==='task'?'（やること）':''}`).join('\n');
+  if(!confirm(`次の${_aiAdds.length}件を追加します。よろしいですか？\n\n${lines}`)) return;
+  const ids=[],t0=now();
+  _aiAdds.forEach((a,ix)=>{
+    if(liveItems().some(x=>x.type===a.type&&x.title===a.title&&x.date===a.date&&(x.time||'')===(a.time||''))) return; // 二重登録防止
+    const id='i'+(t0+ix);
+    DB.items.push({id,type:a.type,pj:'',other:'',title:a.title,date:a.date,time:a.time,endTime:a.endTime,who:[],team:'',visibility:'all',
+      important:false,note:'',done:false,doneAt:0,rep:'none',days:[],until:'',remind:'',comments:[],createdBy:ME,updatedAt:t0+ix,deleted:false});
+    ids.push(id);
+  });
+  $('#ai_addwrap').hidden=true; _aiAdds=[];
+  if(!ids.length){ toast('すべて登録済みでした'); return; }
+  commit(ids); toast(`${ids.length}件を追加しました`);
+};
 
 /* ============================================================ 設定 */
 let memEdit=[];
@@ -1625,6 +1800,7 @@ function openCfg(){
   $('#c_url').value=CFG.url;
   $('#c_keyon').checked=!!CFG.appKey; $('#c_keywrap').hidden=!CFG.appKey; $('#c_key').value=CFG.appKey||'';
   $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'';
+  $('#c_span').checked=CFG.spanArrow!==false;
   $('#c_syncinfo').textContent='アプリ v'+APP_V+(_lastSync?'・最終同期 '+_lastSync:'');
   $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
   refreshIcsField();
@@ -1657,16 +1833,19 @@ $('#c_file').onchange=e=>{
 };
 $('#openCfgBtn').onclick=openCfg;
 $('#cfgNo').onclick=()=>$('#cfg').hidden=true;
-$('#cfgReload').onclick=()=>{$('#cfg').hidden=true;syncNow();};
 $('#cfgOk').onclick=async()=>{
   CFG.url=$('#c_url').value.trim();
   CFG.appKey=$('#c_keyon').checked?$('#c_key').value.trim():'';
   const wasAdmin=isAdmin();
   if(wasAdmin){ // AIキー・モデル・メンバーは管理者のみ変更可
-    CFG.geminiKey=$('#c_gkey').value.trim();
+    const newKey=$('#c_gkey').value.trim();
+    const keyChanged=newKey!==CFG.geminiKey;
+    CFG.geminiKey=newKey;
     CFG.geminiModel=$('#c_gmodel').value;
     CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||''})).filter(m=>m.name);
+    if(CFG.url&&keyChanged) apiPost({action:'setgemkey',gemkey:CFG.geminiKey}).catch(()=>{});   // キーを全員に配る（全員がAIを使える）
   }
+  CFG.spanArrow=$('#c_span').checked;
   const chosen=$('#c_me').value;
   const nameChanged=!$('#c_me').disabled && chosen!==ME;
   if(nameChanged){
@@ -1799,8 +1978,9 @@ $('#bkOk').onclick=()=>{
 
 /* ナビ */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{ view=b.dataset.v; statusFilter=null; render() });
-$('#prev').onclick=()=>{cur.setMonth(cur.getMonth()-1);renderCal()};
-$('#next').onclick=()=>{cur.setMonth(cur.getMonth()+1);renderCal()};
+$('#prev').onclick=()=>{ if(calMode==='w'){shiftWeek(-7);return;} cur.setMonth(cur.getMonth()-1);renderCal(); };
+$('#next').onclick=()=>{ if(calMode==='w'){shiftWeek(7);return;} cur.setMonth(cur.getMonth()+1);renderCal(); };
+$('#cmode').onclick=()=>{ calMode=calMode==='m'?'w':'m'; renderCal(); };
 /* 年月ピッカー：月タイトルをタップで任意の年月へジャンプ */
 let ymY=new Date().getFullYear();
 function renderYmGrid(){
@@ -1810,7 +1990,7 @@ function renderYmGrid(){
     const cls=(ymY===cur.getFullYear()&&i===cur.getMonth())?'cur':(ymY===nowD.getFullYear()&&i===nowD.getMonth())?'now':'';
     return `<button data-m="${i}" class="${cls}">${i+1}月</button>`;
   }).join('');
-  $('#ymGrid').querySelectorAll('button').forEach(b=>b.onclick=()=>{cur=new Date(ymY,+b.dataset.m,1);$('#ymsheet').hidden=true;renderCal();});
+  $('#ymGrid').querySelectorAll('button').forEach(b=>b.onclick=()=>{calMode='m';cur=new Date(ymY,+b.dataset.m,1);$('#ymsheet').hidden=true;renderCal();});
 }
 $('#ym').onclick=()=>{ ymY=cur.getFullYear(); renderYmGrid(); $('#ymsheet').hidden=false; };
 $('#ymPrevY').onclick=()=>{ymY--;renderYmGrid();};
@@ -1884,6 +2064,7 @@ function applyMeta(remote){
   if(remote.claims){ CLAIMS=remote.claims; LS.set('claims',CLAIMS); }
   if(remote.pinset){ PINSET=remote.pinset; LS.set('pinset',PINSET); } // どの名前に暗証番号があるか（番号自体は来ない）
   if(remote.goals){ GOALS=remote.goals; LS.set('goals',GOALS); }      // 目標（管理者が設定）
+  if(typeof remote.gemkey==='string'&&remote.gemkey&&remote.gemkey!==CFG.geminiKey){ CFG.geminiKey=remote.gemkey; LS.set('cfg',CFG); } // AIキーは全員に共有（管理者が設定）
   // 管理者パスは同期しない（サーバ側で照合。応答に載せると誰でも見えてしまうため）
   if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
   // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
@@ -1923,16 +2104,32 @@ async function syncNow(){
   }
 }
 let _keyPrompting=false;
+/* 初回チュートリアル */
+const TUT=[
+  ['ようこそ！','「水野ゼミ カレンダー」はゼミ全員で予定・やること・プロジェクトを共有するアプリです。データは自動で同期されるので、いつ開いても最新です。下のタブで画面を切りかえます。'],
+  ['追加はかんたん','右下の「＋」から予定・やることを追加。「📋 まとめて追加」なら期間や箇条書きで一気に登録できます。✨AIタブで「明日15時からバイト入れて」のように頼んで追加することもできます。'],
+  ['自分の名前と通知','設定で自分の名前を選ぶと、担当の表示や毎朝の通知が自分向けになります。iPhoneは「ホーム画面に追加」してから設定で通知をONにするのがおすすめです！']
+];
+let _tutN=0;
+function showTut(){
+  const [t,b]=TUT[_tutN];
+  $('#tutTitle').textContent=t; $('#tutBody').textContent=b;
+  $('#tutDots').innerHTML=TUT.map((_,i)=>`<span class="${i===_tutN?'on':''}"></span>`).join('');
+  $('#tutNext').textContent=_tutN<TUT.length-1?'次へ':'はじめる！';
+  $('#tut').hidden=false;
+}
+$('#tutNext').onclick=()=>{ _tutN++; if(_tutN>=TUT.length){ $('#tut').hidden=true; LS.set('tutDone',true); } else showTut(); };
 async function boot(){
   applyLogo();
   render();
+  if(!LS.get('tutDone',false)) showTut();   // 初めての人に3枚だけ説明
   if(CFG.url)await syncNow();
   if(CFG.url&&!ME){ openCfg(); toast('まずは自分の名前を選んでください'); } // 各自が自分を選ぶ
   checkRecap();
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='25'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='26'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
