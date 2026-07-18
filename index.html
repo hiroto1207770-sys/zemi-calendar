@@ -959,6 +959,10 @@ function renderSync(){
     :`<b>この端末の中だけに保存されています</b><br><button id="opencfg">全員で共有する設定をする</button>`;
   $('#opencfg').onclick=openCfg;
 }
+// 編集シートを開いている間に自動同期が走るとDBのオブジェクトが作り直され、編集中の参照が「切り離された古いコピー」になる。
+// 保存時は必ずidで現物を引き直す（無ければ差し戻す）。これを怠ると「保存できました」と出るのに消える。
+function freshItem(o){ let t=DB.items.find(x=>x.id===o.id); if(!t){ t=o; DB.items.push(t); } return t; }
+function freshPj(o){ let t=DB.projects.find(x=>x.id===o.id); if(!t){ t=o; DB.projects.push(t); } return t; }
 async function commit(ids){ LS.set('db',DB); render(); if(!CFG.url) return; if(ids&&ids.length) ids.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
 async function flush(){
   if(!CFG.url||!pending.length||syncState==='busy') return;
@@ -1051,7 +1055,7 @@ function renderComments(){
 }
 $('#cmtSend').onclick=()=>{
   const v=$('#cmtInput').value.trim();if(!v||!editing)return;
-  const d=new Date();
+  const d=new Date(); editing=freshItem(editing);
   editing.comments.push({by:ME||'メンバー',text:v,at:`${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`});
   editing.updatedAt=now();$('#cmtInput').value='';renderComments();commit([editing.id]);
 };
@@ -1074,10 +1078,10 @@ $('#save').onclick=()=>{
     rep, days:(rep==='weekly'||rep==='biweekly')?pickedDays.slice():[],
     until:isEv?$('#f_until').value:'',note:$('#f_note').value.trim(),remind:$('#f_remind').value,updatedAt:now()};
   let id;
-  if(editing){Object.assign(editing,o);id=editing.id;} else {id='i'+now();DB.items.push({id,done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,...o});}
+  if(editing){const t=freshItem(editing);Object.assign(t,o);id=t.id;} else {id='i'+now();DB.items.push({id,done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,...o});}
   $('#sheet').hidden=true;sel=o.date;toast(editing?'更新しました':'追加しました');commit([id]);
 };
-$('#del').onclick=()=>{ if(!confirm('削除します'))return; editing.deleted=true;editing.updatedAt=now();const id=editing.id;$('#sheet').hidden=true;toast('削除しました');commit([id]); };
+$('#del').onclick=()=>{ if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;toast('削除しました');commit([id]); };
 
 /* ============================================================ 案件編集シート */
 let pjEditing=null,pjColor=COLORS[0],pjTeams=[],pjMembers=[];
@@ -1145,14 +1149,15 @@ $('#pjOk').onclick=()=>{
   const teams=pjTeams.map(t=>({name:t.name.trim(),color:t.color,members:(t.members||[]).filter(n=>CFG.members.some(m=>m.name===n))})).filter(t=>t.name);
   const members=pjMembers.filter(n=>CFG.members.some(m=>m.name===n));
   let id;
-  if(pjEditing){pjEditing.name=name;pjEditing.color=pjColor;pjEditing.teams=teams;pjEditing.members=members;pjEditing.updatedAt=now();id=pjEditing.id;}
+  if(pjEditing){const t=freshPj(pjEditing);t.name=name;t.color=pjColor;t.teams=teams;t.members=members;t.updatedAt=now();id=t.id;}
   else{id='p'+now();DB.projects.push({id,name,color:pjColor,teams,members,updatedAt:now(),deleted:false,done:false});}
   $('#pjsheet').hidden=true;toast('プロジェクト＆係を保存しました');commit([id]);
 };
 $('#pjDone').onclick=()=>{
   if(!pjEditing)return;
-  pjEditing.done=!pjEditing.done; pjEditing.updatedAt=now();
-  const id=pjEditing.id, nowDone=pjEditing.done;
+  const t=freshPj(pjEditing);
+  t.done=!t.done; t.updatedAt=now();
+  const id=t.id, nowDone=t.done;
   if(nowDone&&filter===id){filter=null;teamFilter=null;}
   $('#pjsheet').hidden=true;
   toast(nowDone?'完了済みに移動しました（カレンダーの予定はそのまま残ります）':'進行中に戻しました');
@@ -1161,9 +1166,10 @@ $('#pjDone').onclick=()=>{
 $('#pjDel').onclick=()=>{
   if(!pjEditing)return;
   if(!confirm(`「${pjEditing.name}」と、その中のやること・予定をすべて削除します`))return;
-  const changed=[pjEditing.id];pjEditing.deleted=true;pjEditing.updatedAt=now();
-  DB.items.filter(i=>i.pj===pjEditing.id&&!i.deleted).forEach(i=>{i.deleted=true;i.updatedAt=now();changed.push(i.id);});
-  if(filter===pjEditing.id){filter=null;teamFilter=null;}
+  const t=freshPj(pjEditing);
+  const changed=[t.id];t.deleted=true;t.updatedAt=now();
+  DB.items.filter(i=>i.pj===t.id&&!i.deleted).forEach(i=>{i.deleted=true;i.updatedAt=now();changed.push(i.id);});
+  if(filter===t.id){filter=null;teamFilter=null;}
   $('#pjsheet').hidden=true;toast('削除しました');commit(changed);
 };
 
@@ -1498,13 +1504,25 @@ $('#cfgOk').onclick=async()=>{
     ME=chosen; _adminUnlocked=false;
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now()); } // 一度選んだら固定
   }
-  // 本名の予約＋表示名の登録（サーバ共有）。暗証番号は廃止（名前を選ぶだけ・どの端末でもOK）。
+  // 本名の予約＋表示名の登録（サーバ共有）。
+  // 本人確認＝各自の「暗証番号」。初めて選んだ人がその場で決め、以後どの端末でも同じ番号で入れる（他人は入れない）。
   if(ME&&CFG.url){
+    const revert=()=>{ ME=''; ME_LOCKED=false; LS.set('me',''); LS.set('meLocked',false); refreshMeOptions(); };
+    let pin='';
+    if(!claimDevs(ME).includes(DEV)){ // この端末でまだ本人確認が済んでいないときだけ聞く
+      pin=PINSET[ME]
+        ? prompt('「'+dispName(ME)+'」の暗証番号を入力してください（本人確認）')
+        : prompt('「'+dispName(ME)+'」の暗証番号を決めてください（例：数字4桁）\n自分のiPhone・iPad・PCで入るときの本人確認に使います。他の人には教えないでください');
+      if(pin===null||!pin.trim()){ if(nameChanged)revert(); return; }
+      pin=pin.trim();
+    }
     const disp=$('#c_disp').disabled?(DISPLAY[ME]||''):$('#c_disp').value.trim();
     try{
-      const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,pin:'',admin:isAdmin()});
+      const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,pin,admin:isAdmin()});
+      if(r&&r.badpin){ toast('暗証番号が違います。本人でなければこの名前は選べません'); revert(); return; }
       if(r&&r.claims){CLAIMS=r.claims;LS.set('claims',CLAIMS);}
       if(r&&r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
+      if(r&&r.pinset){PINSET=r.pinset;LS.set('pinset',PINSET);}
     }catch(e){ /* オフライン等は後続同期でリトライ */ }
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:''});
@@ -1712,7 +1730,7 @@ async function boot(){
 boot();
 // 30秒ごと（画面を見ているときだけ）＋アプリに戻った瞬間。自分の編集は即時送信されるので、これは他人の変更の取り込み用。
 // （見ていない画面は通信しない＝通信量・無料枠の節約。開いた瞬間に必ず同期するので体感は即時）
-setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },30000);
+setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },20000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); });
 window.addEventListener('online',syncNow);
 window.addEventListener('focus',()=>{ if(CFG.url)syncNow(); });
