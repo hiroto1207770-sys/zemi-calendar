@@ -732,11 +732,14 @@ function itemsOn(key){
 }
 
 /* ============================================================ 描画 */
+// 自分が関わっているプロジェクトか（担当メンバー・チーム所属・担当/作成した項目がある）。名前未設定なら全部。
+const involvedIn=p=>!ME || (p.members||[]).includes(ME) || (p.teams||[]).some(t=>(t.members||[]).includes(ME))
+  || DB.items.some(i=>!i.deleted&&i.pj===p.id&&((i.who||[]).includes(ME)||i.createdBy===ME));
 function renderFilters(){
   const f=$('#filters');
   const showMine=view!=='pj'&&ME;
   let h=`<button class="chip ${!filter?'on':''}" data-p="">すべて</button>`+
-    activeProjects().map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
+    activeProjects().filter(involvedIn).map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
   const fp=filter?pj(filter):null;
   if(fp&&fp.teams&&fp.teams.length){
     h+=`<span class="fsep"></span>`+fp.teams.map(t=>`<button class="chip team ${teamFilter===t.name?'on':''}" data-team="${esc(t.name)}" style="${teamFilter===t.name?`background:${t.color};border-color:${t.color}`:`color:${t.color}`}">${esc(t.name)}</button>`).join('');
@@ -1495,25 +1498,13 @@ $('#cfgOk').onclick=async()=>{
     ME=chosen; _adminUnlocked=false;
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now()); } // 一度選んだら固定
   }
-  // 本名の予約＋表示名の登録（サーバ共有）。
-  // 本人確認＝各自の「暗証番号」。初めて選んだ人がその場で決め、以後どの端末でも同じ番号で入れる（他人は入れない）。
+  // 本名の予約＋表示名の登録（サーバ共有）。暗証番号は廃止（名前を選ぶだけ・どの端末でもOK）。
   if(ME&&CFG.url){
-    const revert=()=>{ ME=''; ME_LOCKED=false; LS.set('me',''); LS.set('meLocked',false); refreshMeOptions(); };
-    let pin='';
-    if(!claimDevs(ME).includes(DEV)){ // この端末でまだ本人確認が済んでいないときだけ聞く
-      pin=PINSET[ME]
-        ? prompt('「'+dispName(ME)+'」の暗証番号を入力してください（本人確認）')
-        : prompt('「'+dispName(ME)+'」の暗証番号を決めてください（例：数字4桁）\n自分のiPhone・iPad・PCで入るときの本人確認に使います。他の人には教えないでください');
-      if(pin===null||!pin.trim()){ if(nameChanged)revert(); return; }
-      pin=pin.trim();
-    }
     const disp=$('#c_disp').disabled?(DISPLAY[ME]||''):$('#c_disp').value.trim();
     try{
-      const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,pin,admin:isAdmin()});
-      if(r&&r.badpin){ toast('暗証番号が違います。本人でなければこの名前は選べません'); revert(); return; }
+      const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,pin:'',admin:isAdmin()});
       if(r&&r.claims){CLAIMS=r.claims;LS.set('claims',CLAIMS);}
       if(r&&r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
-      if(r&&r.pinset){PINSET=r.pinset;LS.set('pinset',PINSET);}
     }catch(e){ /* オフライン等は後続同期でリトライ */ }
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:''});
@@ -1719,11 +1710,12 @@ async function boot(){
   checkRecap();
 }
 boot();
-// 20秒ごと（画面を見ているときだけ）＋復帰時。自分の編集は即時反映されるので、これは他人の変更の取り込み用。
-setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },20000);
+// 30秒ごと（画面を見ているときだけ）＋アプリに戻った瞬間。自分の編集は即時送信されるので、これは他人の変更の取り込み用。
+// （見ていない画面は通信しない＝通信量・無料枠の節約。開いた瞬間に必ず同期するので体感は即時）
+setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },30000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); });
 window.addEventListener('online',syncNow);
-window.addEventListener('focus',()=>{ if(CFG.url)flush(); });
+window.addEventListener('focus',()=>{ if(CFG.url)syncNow(); });
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 </script>
 </body>
