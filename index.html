@@ -681,7 +681,10 @@ const HOLIDAYS = {
 };
 const holiday = key => HOLIDAYS[key] || null;
 
-let DB = migrate(LS.get('db', null) || seed());
+// 【重要】共有モード（URLあり＝通常）ではseedを絶対に入れない。
+// seedはupdatedAtが「今」になるため、サーバの正データ（チーム分けや削除の記録）にLWWで勝ってしまい、
+// 新しい端末で「チームが消える」「昔の仮タスクが復活する」データ混同を起こしていた（根治済み）。
+let DB = migrate(LS.get('db', null) || (CFG.url ? {projects:[],items:[]} : seed()));
 
 function seed(){
   const d=new Date(), z=n=>String(n).padStart(2,'0');
@@ -731,8 +734,17 @@ async function apiPost(body){
   const j=await r.json(); if(j&&j.error) throw new Error(j.error); return j;
 }
 let _booted=false;   // アプリを開いた記録は起動時の1回だけサーバに残す
+let _sig='',_pollN=0; // 通信量の節約：前回と同じデータならサーバは「変化なし」だけ返す（20秒ごとの全データ受信をやめる）
 const API = {
-  async load(){ const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+'&me='+encodeURIComponent(ME||'')+(_booted?'':'&boot=1'); const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); const j=await r.json(); if(j&&j.error) throw new Error(j.error); _booted=true; return j; },
+  async load(){
+    _pollN++;
+    const useH=_booted&&_sig&&(_pollN%10!==0);   // 10回に1回は全取得（名簿など付随情報の取りこぼし防止）
+    const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+'&me='+encodeURIComponent(ME||'')+(_booted?'':'&boot=1')+(useH?'&h='+encodeURIComponent(_sig):'');
+    const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
+    const j=await r.json(); if(j&&j.error) throw new Error(j.error);
+    _booted=true; if(j&&j.sig) _sig=j.sig;
+    return j;
+  },
   async merge(changed){ return apiPost({action:'merge',changed}); }
 };
 function mergeInto(local,remote){
@@ -1592,7 +1604,14 @@ function buildAIContext(){
   const overdue=liveItems().filter(i=>i.type==='task'&&!i.done&&canSee(i)&&dleft(i.date)<0).sort((a,b)=>a.date.localeCompare(b.date));
   if(overdue.length){ lines.push('\n■期限超過'); overdue.forEach(i=>lines.push('- '+lineOf({i,key:i.date})+`〔id:${i.id}〕`)); }
   lines.push('\n■今後2週間の予定・締切');
-  upcoming(14).forEach(o=>lines.push('- '+lineOf(o)+`〔id:${o.i.id}〕`));   // idはAIが削除指定に使う
+  upcoming(14).forEach(o=>lines.push('- '+lineOf(o)+`〔id:${o.i.id}〕`));   // idはAIが削除・完了指定に使う
+  // 全予定・タスクの一覧（2週間より先も含む。一括削除などに必要）
+  const listed=new Set(); upcoming(14).forEach(o=>listed.add(o.i.id)); overdue.forEach(i=>listed.add(i.id));
+  const rest=liveItems().filter(i=>canSee(i)&&!listed.has(i.id)&&!(i.type==='task'&&i.done)).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,250);
+  if(rest.length){
+    lines.push('\n■その他すべての予定・タスク');
+    rest.forEach(i=>lines.push(`- ${i.type==='event'?'📅':'☐'}${i.date} ${i.title}${i.rep&&i.rep!=='none'?'(くり返し:'+(REPLABEL[i.rep]||i.rep)+')':''}（${catOf(i).name}）〔id:${i.id}〕`));
+  }
   return lines.join('\n');
 }
 /* Geminiのモデルは次々に廃止される → キーで使えるモデル一覧から自動で選ぶ（設定「自動」時） */
@@ -1634,49 +1653,51 @@ async function aiGenerate(x,q){
     throw new Error(msg);
   }
 }
-/* AIの回答から「予定の追加・削除の提案」ブロックを取り出す */
-let _aiAdds=[],_aiDels=[];
+/* AIの回答から「予定の追加・削除・完了の提案」ブロックを取り出す */
+let _aiAdds=[],_aiDels=[],_aiDones=[];
 function aiExtractAdds(txt){
   const m=String(txt||'').match(/```json\s*([\s\S]*?)```/);
-  if(!m) return {clean:txt,adds:[],dels:[]};
-  let adds=[],dels=[]; try{ const o=JSON.parse(m[1]); adds=Array.isArray(o.add)?o.add:[]; dels=Array.isArray(o.del)?o.del:[]; }catch(e){}
+  if(!m) return {clean:txt,adds:[],dels:[],dones:[]};
+  let adds=[],dels=[],dones=[]; try{ const o=JSON.parse(m[1]); adds=Array.isArray(o.add)?o.add:[]; dels=Array.isArray(o.del)?o.del:[]; dones=Array.isArray(o.done)?o.done:[]; }catch(e){}
   adds=adds.filter(a=>a&&a.title&&/^\d{4}-\d{2}-\d{2}$/.test(a.date||''))
     .map(a=>({type:a.type==='task'?'task':'event',title:String(a.title).slice(0,100),date:a.date,
       time:/^\d{2}:\d{2}$/.test(a.time||'')?a.time:'',endTime:/^\d{2}:\d{2}$/.test(a.endTime||'')?a.endTime:''}));
-  dels=dels.filter(d=>d&&(d.id||d.title)&&/^\d{4}-\d{2}-\d{2}$/.test(d.date||''))
-    .map(d=>({id:String(d.id||''),title:String(d.title||'').slice(0,100),date:d.date}));
-  return {clean:String(txt).replace(m[0],'').trim(), adds, dels};
+  dels=dels.filter(d=>d&&(d.id||d.title))
+    .map(d=>({id:String(d.id||''),title:String(d.title||'').slice(0,100),date:/^\d{4}-\d{2}-\d{2}$/.test(d.date||'')?d.date:''}));
+  dones=dones.filter(d=>d&&(d.id||d.title)).map(d=>({id:String(d.id||''),title:String(d.title||'').slice(0,100)}));
+  return {clean:String(txt).replace(m[0],'').trim(), adds, dels, dones};
 }
 async function askAI(){
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
   if(!CFG.url&&!CFG.geminiKey){ toast('設定でGemini APIキーを入れてください'); openCfg(); return; }   // 共有モードはサーバのキーで全員使える
   $('#ai_q').value='';
-  $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[];
+  $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[]; _aiDones=[];
   _aiChat.push({role:'user',text:q}); renderAiChat(true);
   const sys=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n`
-    +`ユーザーが予定・タスクの追加や削除を頼んだら、回答文の最後に次の形式のブロックを1つだけ付けてください（依頼でなければ絶対に付けないこと）：\n`
-    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}],"del":[{"id":"i1234567890123","date":"YYYY-MM-DD","title":"会議"}]}\n```\n'
-    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数件は配列に全部入れる。`
-    +`delは削除で、必ず下のデータの〔id:～〕のidをそのまま入れ、dateはその予定の日付にする（idが見つからないときだけtitle＋dateで指定）。追加だけならdelは省略、削除だけならaddは省略。\n\n${buildAIContext()}`;
+    +`ユーザーが予定・タスクの追加・削除・完了を頼んだら、回答文の最後に次の形式のブロックを1つだけ付けてください（依頼でなければ絶対に付けないこと）：\n`
+    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}],"del":[{"id":"i1234567890123","date":"YYYY-MM-DD"}],"done":[{"id":"i1234567890123"}]}\n```\n'
+    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数件は配列に全部入れる（「◯◯を全部消して」のような一括依頼は該当する全idを列挙する）。`
+    +`del=削除・done=タスクを完了にする。どちらも必ず下のデータの〔id:～〕のidを使う（くり返し予定の特定の回だけ消すときはdateにその回の日付を入れる。全部消すときはdateにその予定自身の日付）。使わない配列は省略。\n\n${buildAIContext()}`;
   const contents=[{role:'user',parts:[{text:sys}]},{role:'model',parts:[{text:'わかりました。データを踏まえてお答えします。'}]},
     ..._aiChat.map(m=>({role:m.role,parts:[{text:m.rawtext||m.text}]}))];
   try{
     const raw=await aiGenerate(contents,q);
-    const {clean,adds,dels}=aiExtractAdds(raw);
-    _aiChat.push({role:'model',text:clean||((adds.length||dels.length)?'予定の変更を提案します。下のボタンで実行できます。':'（回答が空でした）'),rawtext:raw});
+    const {clean,adds,dels,dones}=aiExtractAdds(raw);
+    _aiChat.push({role:'model',text:clean||((adds.length||dels.length||dones.length)?'予定の変更を提案します。下のボタンで実行できます。':'（回答が空でした）'),rawtext:raw});
     renderAiChat(false);
-    if(adds.length||dels.length){
-      _aiAdds=adds; _aiDels=dels;
-      $('#ai_addbtn').textContent='📅 '+[adds.length?`${adds.length}件追加`:'',dels.length?`${dels.length}件削除`:''].filter(Boolean).join('・')+'を実行する';
+    if(adds.length||dels.length||dones.length){
+      _aiAdds=adds; _aiDels=dels; _aiDones=dones;
+      $('#ai_addbtn').textContent='📅 '+[adds.length?`${adds.length}件追加`:'',dels.length?`${dels.length}件削除`:'',dones.length?`${dones.length}件完了`:''].filter(Boolean).join('・')+'を実行する';
       $('#ai_addwrap').hidden=false;
     }
   }catch(e){ _aiChat.push({role:'model',text:'エラー: '+e.message}); renderAiChat(false); }
 }
 $('#ai_addbtn').onclick=()=>{
-  if(!_aiAdds.length&&!_aiDels.length) return;
+  if(!_aiAdds.length&&!_aiDels.length&&!_aiDones.length) return;
   const lines=[
     ..._aiAdds.map(a=>`＋ ${a.date}${a.time?' '+a.time+(a.endTime?'〜'+a.endTime:''):''} ${a.title}${a.type==='task'?'（やること）':''}`),
-    ..._aiDels.map(d=>{ const x=d.id?liveItems().find(t=>t.id===d.id):null; return `－ ${d.date} ${(x&&x.title)||d.title||d.id}（削除）`; })
+    ..._aiDels.map(d=>{ const x=d.id?liveItems().find(t=>t.id===d.id):null; return `－ ${d.date||(x&&x.date)||''} ${(x&&x.title)||d.title||d.id}（削除）`; }),
+    ..._aiDones.map(d=>{ const x=d.id?liveItems().find(t=>t.id===d.id):null; return `✓ ${(x&&x.title)||d.title||d.id}（完了にする）`; })
   ].join('\n');
   if(!confirm(`次の内容を実行します。よろしいですか？\n\n${lines}`)) return;
   const ids=[],t0=now();
@@ -1687,24 +1708,30 @@ $('#ai_addbtn').onclick=()=>{
       important:false,note:'',done:false,doneAt:0,rep:'none',days:[],until:'',remind:'',comments:[],skip:[],notes:{},createdBy:ME,updatedAt:t0+ix,deleted:false});
     ids.push(id);
   });
-  let delCnt=0,delMiss=[];
+  let delCnt=0,doneCnt=0,delMiss=[];
   const norm=s=>String(s||'').replace(/[\s　]/g,'');
+  const findTarget=dl=>(dl.id&&liveItems().find(t=>t.id===dl.id))
+    ||(dl.title&&dl.date&&liveItems().find(t=>norm(t.title)===norm(dl.title)&&t.date===dl.date))
+    ||(dl.title&&dl.date&&liveItems().find(t=>t.type==='event'&&norm(t.title)===norm(dl.title)&&occursOn(t,dl.date)))
+    ||(dl.title&&liveItems().find(t=>norm(t.title)===norm(dl.title)))
+    ||(dl.title&&liveItems().find(t=>(norm(t.title).includes(norm(dl.title))||norm(dl.title).includes(norm(t.title)))&&(!dl.date||t.date===dl.date||occursOn(t,dl.date))));
   _aiDels.forEach(dl=>{
-    // id優先 → 正規化タイトル完全一致 → くり返しの回 → 部分一致、の順で探す
-    let x=(dl.id&&liveItems().find(t=>t.id===dl.id))
-      ||(dl.title&&liveItems().find(t=>norm(t.title)===norm(dl.title)&&t.date===dl.date))
-      ||(dl.title&&liveItems().find(t=>t.type==='event'&&norm(t.title)===norm(dl.title)&&occursOn(t,dl.date)))
-      ||(dl.title&&liveItems().find(t=>(norm(t.title).includes(norm(dl.title))||norm(dl.title).includes(norm(t.title)))&&(t.date===dl.date||occursOn(t,dl.date))));
+    const x=findTarget(dl);
     if(!x){ delMiss.push(dl.title||dl.id); return; }
-    if(x.type==='event'&&x.rep&&x.rep!=='none'&&x.date!==dl.date&&occursOn(x,dl.date)){   // くり返しの1回だけ削除
+    if(x.type==='event'&&x.rep&&x.rep!=='none'&&dl.date&&x.date!==dl.date&&occursOn(x,dl.date)){   // くり返しの1回だけ削除
       x.skip=Array.isArray(x.skip)?x.skip:[]; if(!x.skip.includes(dl.date))x.skip.push(dl.date);
     } else { x.deleted=true; }
-    x.updatedAt=now(); ids.push(x.id); delCnt++;
+    x.updatedAt=now(); if(!ids.includes(x.id))ids.push(x.id); delCnt++;
   });
-  $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[];
+  _aiDones.forEach(dl=>{
+    const x=findTarget(dl);
+    if(!x||x.type!=='task'){ delMiss.push(dl.title||dl.id); return; }
+    x.done=true; x.doneAt=now(); x.updatedAt=now(); if(!ids.includes(x.id))ids.push(x.id); doneCnt++;
+  });
+  $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[]; _aiDones=[];
   if(!ids.length){ toast('変更できませんでした'+(delMiss.length?`（見つからず: ${delMiss.join('・')}）`:'（すべて登録済み）')); return; }
   commit(ids);
-  toast(`実行しました（追加${ids.length-delCnt}件・削除${delCnt}件${delMiss.length?`・見つからず${delMiss.length}件`:''}）`);
+  toast(`実行しました（追加${ids.length-delCnt-doneCnt}件・削除${delCnt}件・完了${doneCnt}件${delMiss.length?`・見つからず${delMiss.length}件`:''}）`);
 };
 
 /* ============================================================ 設定 */
@@ -2154,6 +2181,7 @@ async function syncNow(){
   setSync('busy');
   try{
     const remote=await API.load();
+    if(remote&&remote.same){ setSync('ok'); _lastSync=new Date().toLocaleTimeString(); return; }   // 変化なし＝通信も描き直しも最小
     let missing=[],changed=false;
     if(remote&&remote.projects){
       // サーバに無いローカル分を洗い出して送る（初期データや同期漏れの自己修復。端末ごとに内容が違う問題を解消）
@@ -2203,7 +2231,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='30'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='31'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
