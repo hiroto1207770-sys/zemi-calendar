@@ -216,6 +216,11 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 #tut button{width:100%;border:none;border-radius:12px;padding:12px;font-weight:700;background:var(--brandbg);color:#fff}
 /* トーストの「元に戻す」 */
 .toast button{margin-left:10px;border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:8px;padding:4px 10px;font-weight:700;font-size:12px}
+/* AIチャット（会話が続けられる） */
+.aichat{display:flex;flex-direction:column;gap:8px;margin:10px 0;max-height:45vh;overflow-y:auto}
+.aichat .cu{align-self:flex-end;background:var(--brandbg);color:#fff;border-radius:14px 14px 3px 14px;padding:9px 13px;font-size:13px;max-width:85%;white-space:pre-wrap;word-break:break-word}
+.aichat .ca{align-self:flex-start;background:var(--card-2);border:1px solid var(--line);border-radius:14px 14px 14px 3px;padding:10px 13px;font-size:13px;line-height:1.7;max-width:92%;white-space:pre-wrap;word-break:break-word}
+.aichat .ca.loading{color:var(--muted)}
 /* 過去の予定からの候補チップ */
 .sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .sugg button{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--muted);background:var(--card-2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -492,10 +497,10 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <h3>AI</h3>
   <p class="help">予定・締切・プロジェクトの状況をAIに聞けます。「明日の15時から17時にバイト入れて」のように頼むと予定の追加もできます（追加前に確認が出ます）。</p>
   <div class="aiquick" id="ai_quick"></div>
-  <textarea id="ai_q" placeholder="例：今週やるべきことを教えて／大正製薬の状況は？"></textarea>
-  <div class="acts"><button class="no" id="aiClose">とじる</button><button class="go" id="aiAsk">きく</button></div>
-  <div class="aibubble" id="ai_out" hidden></div>
+  <div class="aichat" id="ai_chat" hidden></div>
   <div class="acts" id="ai_addwrap" hidden><button class="go" id="ai_addbtn" style="flex:1"></button></div>
+  <textarea id="ai_q" placeholder="例：今週やるべきことを教えて／続けて質問もできます"></textarea>
+  <div class="acts"><button class="no" id="aiClose">とじる</button><button class="no" id="aiReset" title="会話を最初からやり直す" style="flex:0 0 auto">🗑</button><button class="go" id="aiAsk">送る</button></div>
 </div></div>
 
 <!-- まとめて追加（年間予定など） -->
@@ -620,12 +625,15 @@ const LS = {
 const MEM = {};
 const now = () => Date.now();
 
-const MEMBERS0 = ['みおり','まい','めい','るい','そうた','ひろと','りの','ゆずか','ゆりな','あおい','さくら','あやか','ゆいの'].map(n=>({name:n}));
+// 初期名簿は本名（サーバの名簿が正だが、初回起動・同期前でも正しい名前が出るように）
+const MEMBERS0 = ['田中大翔','根津柚花','村山美織梨','大野萌衣','上野さくら','東久保結衣','鈴木彩花','市岡佑梨菜','大塚莉乃','泉谷宗汰','椙山真衣','菅原月碧','会田葵'].map(n=>({name:n}));
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
 const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 if(!CFG.url) CFG.url=DEFAULT_URL;
 // 番号つきの旧モデルは次々に廃止される（limit:0 / no longer available エラー）→「自動選択」へ移行
 if(/^gemini-(2\.5|2\.0|1\.5)/.test(CFG.geminiModel||'')){ CFG.geminiModel=''; LS.set('cfg',CFG); }
+// 開発初期のひらがな名簿が残っている端末は本名リストへ自動移行（正式な名簿は次の同期でサーバから届く）
+if((CFG.members||[]).some(m=>['みおり','ゆいの','そうた'].includes(m.name))){ CFG.members=MEMBERS0.map(m=>({...m})); LS.set('cfg',CFG); }
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
 if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON.stringify(['大翔','山田','佐藤','鈴木','高橋'])){ CFG.members=MEMBERS0.map(m=>({...m})); }
 // メンバーは {name, birthday} に正規化（旧データは文字列配列や nick 付き）
@@ -760,7 +768,7 @@ const inTeam=i=>!!ME&&(teamMembers(i.teamPj||i.pj,i.team).includes(ME)||(i.who||
    ※自分(ME)未設定の端末は自分の判定ができないため、チーム/関係者のみの項目は出ない（共有時は起動時に名前選択を促す） */
 const canSee=i=>{
   if(i.visibility==='members') return !!ME&&((i.who||[]).includes(ME)||i.createdBy===ME);
-  if(i.team) return !CFG.url ? true : inTeam(i);   // 端末内のみモードでは全部見える
+  if(i.team) return !CFG.url||!ME ? true : inTeam(i);   // 端末内のみ・名前未設定の端末では全部見える（「データが消えた」誤解を防ぐ）
   return true;
 };
 // 案件なしの予定は自由入力ラベル(other)を使う
@@ -1555,13 +1563,22 @@ $('#pushOff').onclick=disablePush;
 
 /* ============================================================ AI（Gemini） */
 const AI_PRESETS=['今週やるべきことは？','遅れているタスクは？','各プロジェクトの状況をまとめて','今日の予定は？'];
+let _aiChat=[];   // 会話の履歴 {role:'user'|'model', text, rawtext}（次の質問に文脈が引き継がれる）
+function renderAiChat(loading){
+  const el=$('#ai_chat');
+  el.innerHTML=_aiChat.map(m=>`<div class="${m.role==='user'?'cu':'ca'}">${esc(m.text)}</div>`).join('')
+    +(loading?'<div class="ca loading">考えています…</div>':'');
+  el.hidden=!el.innerHTML;
+  el.scrollTop=el.scrollHeight;
+}
 function openAI(){
-  $('#ai_out').hidden=true; $('#ai_out').textContent='';
   $('#ai_quick').innerHTML=AI_PRESETS.map(p=>`<button data-p="${esc(p)}">${esc(p)}</button>`).join('');
   $('#ai_quick').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#ai_q').value=b.dataset.p;askAI();});
+  renderAiChat(false);
   $('#aisheet').hidden=false;
 }
 $('#aiClose').onclick=()=>$('#aisheet').hidden=true;
+$('#aiReset').onclick=()=>{ _aiChat=[]; _aiAdds=[]; _aiDels=[]; $('#ai_addwrap').hidden=true; renderAiChat(false); toast('会話をリセットしました'); };
 $('#aisheet').onclick=e=>{if(e.target.id==='aisheet')$('#aisheet').hidden=true};
 $('#aiAsk').onclick=askAI;
 function buildAIContext(){
@@ -1573,9 +1590,9 @@ function buildAIContext(){
     (p.teams||[]).forEach(tm=>{const tt=t.filter(i=>i.team===tm.name);lines.push(`  ・${tm.name}：${tt.filter(i=>i.done).length}/${tt.length}`);});
   });
   const overdue=liveItems().filter(i=>i.type==='task'&&!i.done&&canSee(i)&&dleft(i.date)<0).sort((a,b)=>a.date.localeCompare(b.date));
-  if(overdue.length){ lines.push('\n■期限超過'); overdue.forEach(i=>lines.push('- '+lineOf({i,key:i.date}))); }
+  if(overdue.length){ lines.push('\n■期限超過'); overdue.forEach(i=>lines.push('- '+lineOf({i,key:i.date})+`〔id:${i.id}〕`)); }
   lines.push('\n■今後2週間の予定・締切');
-  upcoming(14).forEach(o=>lines.push('- '+lineOf(o)));
+  upcoming(14).forEach(o=>lines.push('- '+lineOf(o)+`〔id:${o.i.id}〕`));   // idはAIが削除指定に使う
   return lines.join('\n');
 }
 /* Geminiのモデルは次々に廃止される → キーで使えるモデル一覧から自動で選ぶ（設定「自動」時） */
@@ -1596,13 +1613,15 @@ async function geminiModel(){
   }catch(e){}
   return 'gemini-flash-latest';
 }
-async function aiGenerate(parts){
+async function aiGenerate(x,q){
+  // x = partsの配列 か、{role,parts}の会話配列。qは質問の要約（logシート記録用）
+  const contents=(Array.isArray(x)&&x[0]&&x[0].role)?x:[{parts:x}];
   // 共有モードではGAS経由で呼ぶ＝APIキーはサーバの中だけ（端末に配らないので抜き取り不可能）
-  if(CFG.url){ const r=await apiPost({action:'ai',parts}); return r.text||''; }
+  if(CFG.url){ const r=await apiPost({action:'ai',contents,q:q||''}); return r.text||''; }
   for(let att=0;att<2;att++){
     const model=await geminiModel();
     const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts}]})});
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents})});
     const data=await r.json();
     if(r.ok) return data.candidates?.[0]?.content?.parts?.map(p=>p.text).join('')||'';
     const msg=data.error?.message||('HTTP '+r.status);
@@ -1624,34 +1643,40 @@ function aiExtractAdds(txt){
   adds=adds.filter(a=>a&&a.title&&/^\d{4}-\d{2}-\d{2}$/.test(a.date||''))
     .map(a=>({type:a.type==='task'?'task':'event',title:String(a.title).slice(0,100),date:a.date,
       time:/^\d{2}:\d{2}$/.test(a.time||'')?a.time:'',endTime:/^\d{2}:\d{2}$/.test(a.endTime||'')?a.endTime:''}));
-  dels=dels.filter(d=>d&&d.title&&/^\d{4}-\d{2}-\d{2}$/.test(d.date||'')).map(d=>({title:String(d.title).slice(0,100),date:d.date}));
+  dels=dels.filter(d=>d&&(d.id||d.title)&&/^\d{4}-\d{2}-\d{2}$/.test(d.date||''))
+    .map(d=>({id:String(d.id||''),title:String(d.title||'').slice(0,100),date:d.date}));
   return {clean:String(txt).replace(m[0],'').trim(), adds, dels};
 }
 async function askAI(){
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
   if(!CFG.url&&!CFG.geminiKey){ toast('設定でGemini APIキーを入れてください'); openCfg(); return; }   // 共有モードはサーバのキーで全員使える
-  const out=$('#ai_out'); out.hidden=false; out.classList.add('loading'); out.textContent='考えています…';
+  $('#ai_q').value='';
   $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[];
-  const prompt=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n`
-    +`もしユーザーが予定・タスクの追加や削除を頼んでいる場合は、回答文の最後に次の形式のブロックを1つだけ付けてください（依頼でなければ絶対に付けないこと）：\n`
-    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}],"del":[{"title":"会議","date":"YYYY-MM-DD"}]}\n```\n'
-    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数件は配列に全部入れる。delは削除で、上のデータにある予定のタイトルと日付を正確にそのまま書く。追加だけならdelは省略、削除だけならaddは省略。\n\n${buildAIContext()}\n\n【質問】${q}`;
+  _aiChat.push({role:'user',text:q}); renderAiChat(true);
+  const sys=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n`
+    +`ユーザーが予定・タスクの追加や削除を頼んだら、回答文の最後に次の形式のブロックを1つだけ付けてください（依頼でなければ絶対に付けないこと）：\n`
+    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}],"del":[{"id":"i1234567890123","date":"YYYY-MM-DD","title":"会議"}]}\n```\n'
+    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数件は配列に全部入れる。`
+    +`delは削除で、必ず下のデータの〔id:～〕のidをそのまま入れ、dateはその予定の日付にする（idが見つからないときだけtitle＋dateで指定）。追加だけならdelは省略、削除だけならaddは省略。\n\n${buildAIContext()}`;
+  const contents=[{role:'user',parts:[{text:sys}]},{role:'model',parts:[{text:'わかりました。データを踏まえてお答えします。'}]},
+    ..._aiChat.map(m=>({role:m.role,parts:[{text:m.rawtext||m.text}]}))];
   try{
-    const raw=await aiGenerate([{text:prompt}]);
+    const raw=await aiGenerate(contents,q);
     const {clean,adds,dels}=aiExtractAdds(raw);
-    out.classList.remove('loading'); out.textContent=clean||((adds.length||dels.length)?'予定の変更を提案します。':'（回答が空でした）');
+    _aiChat.push({role:'model',text:clean||((adds.length||dels.length)?'予定の変更を提案します。下のボタンで実行できます。':'（回答が空でした）'),rawtext:raw});
+    renderAiChat(false);
     if(adds.length||dels.length){
       _aiAdds=adds; _aiDels=dels;
       $('#ai_addbtn').textContent='📅 '+[adds.length?`${adds.length}件追加`:'',dels.length?`${dels.length}件削除`:''].filter(Boolean).join('・')+'を実行する';
       $('#ai_addwrap').hidden=false;
     }
-  }catch(e){ out.classList.remove('loading'); out.textContent='エラー: '+e.message; }
+  }catch(e){ _aiChat.push({role:'model',text:'エラー: '+e.message}); renderAiChat(false); }
 }
 $('#ai_addbtn').onclick=()=>{
   if(!_aiAdds.length&&!_aiDels.length) return;
   const lines=[
     ..._aiAdds.map(a=>`＋ ${a.date}${a.time?' '+a.time+(a.endTime?'〜'+a.endTime:''):''} ${a.title}${a.type==='task'?'（やること）':''}`),
-    ..._aiDels.map(d=>`－ ${d.date} ${d.title}（削除）`)
+    ..._aiDels.map(d=>{ const x=d.id?liveItems().find(t=>t.id===d.id):null; return `－ ${d.date} ${(x&&x.title)||d.title||d.id}（削除）`; })
   ].join('\n');
   if(!confirm(`次の内容を実行します。よろしいですか？\n\n${lines}`)) return;
   const ids=[],t0=now();
@@ -1662,16 +1687,24 @@ $('#ai_addbtn').onclick=()=>{
       important:false,note:'',done:false,doneAt:0,rep:'none',days:[],until:'',remind:'',comments:[],skip:[],notes:{},createdBy:ME,updatedAt:t0+ix,deleted:false});
     ids.push(id);
   });
-  let delCnt=0;
+  let delCnt=0,delMiss=[];
+  const norm=s=>String(s||'').replace(/[\s　]/g,'');
   _aiDels.forEach(dl=>{
-    let x=liveItems().find(x=>x.title===dl.title&&x.date===dl.date);
-    if(x){ x.deleted=true; x.updatedAt=now(); ids.push(x.id); delCnt++; return; }
-    x=liveItems().find(x=>x.title===dl.title&&x.type==='event'&&occursOn(x,dl.date));   // くり返しの1回ならその回だけ消す
-    if(x){ x.skip=Array.isArray(x.skip)?x.skip:[]; if(!x.skip.includes(dl.date))x.skip.push(dl.date); x.updatedAt=now(); ids.push(x.id); delCnt++; }
+    // id優先 → 正規化タイトル完全一致 → くり返しの回 → 部分一致、の順で探す
+    let x=(dl.id&&liveItems().find(t=>t.id===dl.id))
+      ||(dl.title&&liveItems().find(t=>norm(t.title)===norm(dl.title)&&t.date===dl.date))
+      ||(dl.title&&liveItems().find(t=>t.type==='event'&&norm(t.title)===norm(dl.title)&&occursOn(t,dl.date)))
+      ||(dl.title&&liveItems().find(t=>(norm(t.title).includes(norm(dl.title))||norm(dl.title).includes(norm(t.title)))&&(t.date===dl.date||occursOn(t,dl.date))));
+    if(!x){ delMiss.push(dl.title||dl.id); return; }
+    if(x.type==='event'&&x.rep&&x.rep!=='none'&&x.date!==dl.date&&occursOn(x,dl.date)){   // くり返しの1回だけ削除
+      x.skip=Array.isArray(x.skip)?x.skip:[]; if(!x.skip.includes(dl.date))x.skip.push(dl.date);
+    } else { x.deleted=true; }
+    x.updatedAt=now(); ids.push(x.id); delCnt++;
   });
   $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[];
-  if(!ids.length){ toast('変更はありませんでした（登録済み／見つからず）'); return; }
-  commit(ids); toast(`実行しました（追加${ids.length-delCnt}件・削除${delCnt}件）`);
+  if(!ids.length){ toast('変更できませんでした'+(delMiss.length?`（見つからず: ${delMiss.join('・')}）`:'（すべて登録済み）')); return; }
+  commit(ids);
+  toast(`実行しました（追加${ids.length-delCnt}件・削除${delCnt}件${delMiss.length?`・見つからず${delMiss.length}件`:''}）`);
 };
 
 /* ============================================================ 設定 */
@@ -2090,8 +2123,13 @@ function applyMeta(remote){
   if(!remote) return;
   // 名簿（誕生日つき）はサーバが正。管理者が保存すると全員に配られる。
   if(Array.isArray(remote.members)&&remote.members.length){
+    const before=JSON.stringify(CFG.members);
     CFG.members=remote.members.map(m=>({name:String(m.name||''),birthday:String(m.birthday||'')})).filter(m=>m.name);
     LS.set('cfg',CFG);
+    // 設定を開いている最中に名簿が届いたら、名前の選択肢をその場で最新にする（初回起動時の「古い名前しか出ない」対策）
+    if(before!==JSON.stringify(CFG.members)&&!$('#cfg').hidden){
+      memEdit=CFG.members.map(m=>({...m})); refreshMeOptions(); renderMemListRO();
+    }
   } else if(remote.members===null&&isAdmin()&&CFG.url){
     apiPost({action:'members',members:CFG.members}).catch(()=>{}); // 初回だけ、この端末の名簿をサーバへ
   }
@@ -2165,7 +2203,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='29'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='30'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
