@@ -151,7 +151,10 @@ button.teamline:active{opacity:.6}
 .memo .mbody{flex:1;min-width:0}
 .memo .mtx{font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
 .memo .mmeta{font-size:10.5px;color:var(--faint);margin-top:2px}
-.memo .mdel{flex:0 0 auto;border:none;background:none;color:var(--faint);font-size:14px;padding:2px 6px;cursor:pointer}
+.memo .mdel,.memo .medit{flex:0 0 auto;border:none;background:none;color:var(--faint);font-size:14px;padding:2px 5px;cursor:pointer}
+.qdate{display:flex;gap:6px;flex-wrap:wrap;margin:5px 0 2px}
+.qdate button{font-size:11.5px;padding:5px 10px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--muted);cursor:pointer}
+.qdate button:active{background:var(--brass);color:#fff;border-color:var(--brass)}
 
 .panel{margin-top:18px}
 .item{display:flex;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px 12px 15px;margin-bottom:9px;align-items:flex-start;position:relative;overflow:hidden;box-shadow:var(--sh-s)}
@@ -409,7 +412,10 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="sugg" id="f_sug" hidden></div>
   <label id="l_date">期限</label>
   <input id="f_date" type="date">
-  <div id="w_edate" hidden><label>終了日<span style="font-weight:600;color:var(--muted)">（数日にわたる予定のとき・任意）</span></label><input id="f_edate" type="date"></div>
+  <div class="qdate" id="q_date"><button type="button" data-qd="today">今日</button><button type="button" data-qd="tomorrow">明日</button><button type="button" data-qd="nextmon">次の月曜</button></div>
+  <div id="w_edate" hidden><label>終了日<span style="font-weight:600;color:var(--muted)">（数日にわたる予定のとき・任意）</span></label><input id="f_edate" type="date">
+    <div class="qdate" id="q_edate"><button type="button" data-qe="1">開始日の翌日</button><button type="button" data-qe="2">＋2日</button><button type="button" data-qe="clear">なし</button></div>
+  </div>
   <div id="w_time" hidden>
     <label style="display:flex;align-items:center;justify-content:space-between">時刻
       <span style="font-weight:600;color:var(--muted);display:flex;align-items:center;gap:5px"><input type="checkbox" id="f_allday" style="width:auto">終日</span>
@@ -516,7 +522,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <label>メモを追加</label>
   <textarea id="m_text" placeholder="例：数字の裏にある『なぜ』を必ず一言そえる"></textarea>
   <div class="seg" id="m_cat"></div>
-  <div class="acts" style="margin-top:6px"><button class="go" id="m_add" style="flex:1">＋ 追加する</button></div>
+  <div class="acts" style="margin-top:6px"><button class="no" id="m_cancel" hidden style="flex:0 0 auto">やめる</button><button class="go" id="m_add" style="flex:1">＋ 追加する</button></div>
   <div class="seg" id="m_filter" style="margin-top:14px"></div>
   <div id="m_list"></div>
   <div class="acts" style="margin-top:10px"><button class="no" id="mClose">とじる</button></div>
@@ -668,7 +674,7 @@ if((CFG.members||[]).some(m=>['みおり','ゆいの','そうた'].includes(m.na
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
 if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON.stringify(['大翔','山田','佐藤','鈴木','高橋'])){ CFG.members=MEMBERS0.map(m=>({...m})); }
 // メンバーは {name, birthday} に正規化（旧データは文字列配列や nick 付き）
-CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:''}:{name:m.name||'',birthday:m.birthday||''}).filter(m=>m.name);
+CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:'',email:''}:{name:m.name||'',birthday:m.birthday||'',email:m.email||''}).filter(m=>m.name);
 LS.set('cfg',CFG);
 let ME = LS.get('me', '');
 let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者パスワードで解除）
@@ -927,6 +933,16 @@ function renderHome(){
         +(openGoal?`<div class="goaldetail">${gd}</div>`:''):'')
       +(GOALS.gen?`<div class="goalline"><span>9期生</span><b class="mincho">${esc(GOALS.gen)}</b></div>`:'')
       +`</div>`;
+  }
+  // 自分の締切（担当＝自分／自分が作成 のやること・未完了）。期限超過を先頭・赤で。埋もれ防止。
+  if(ME){
+    const mine=openTasks.filter(i=>isMine(i)||i.createdBy===ME).sort((a,b)=>a.date.localeCompare(b.date));
+    const mover=mine.filter(i=>dleft(i.date)<0), mrest=mine.filter(i=>dleft(i.date)>=0);
+    const mineSorted=[...mover,...mrest];
+    h+=`<div class="homeblock"><div class="sec ${mover.length?'amber':''}">自分の締切 <span class="cnt">${mine.length}</span></div>`;
+    h+=mineSorted.length?mineSorted.slice(0,8).map(i=>card(i)).join('')
+      :`<div class="empty">自分が担当・登録した未完了のやることはありません</div>`;
+    h+=`</div>`;
   }
   h+=`<div class="homeblock"><div class="sec">今日 <span class="cnt">${todayList.length}</span></div>`;
   h+=bd.map(bdayCard).join('');
@@ -1238,6 +1254,19 @@ function setKind(k){
 }
 $('#f_rep').onchange=updateRepDays;
 $('#f_allday').onchange=updateAllday;
+// 日付のクイック入力（入力ステップを短縮）
+const addDaysStr=(s,n)=>{ const d=new Date((s||TODAY)+'T00:00'); d.setDate(d.getDate()+n); return ymd(d); };
+$('#q_date').querySelectorAll('[data-qd]').forEach(b=>b.onclick=()=>{
+  const k=b.dataset.qd;
+  if(k==='today') $('#f_date').value=TODAY;
+  else if(k==='tomorrow') $('#f_date').value=addDaysStr(TODAY,1);
+  else if(k==='nextmon'){ const d=new Date(TODAY+'T00:00'); const add=((8-d.getDay())%7)||7; $('#f_date').value=addDaysStr(TODAY,add); }
+});
+$('#q_edate').querySelectorAll('[data-qe]').forEach(b=>b.onclick=()=>{
+  const k=b.dataset.qe;
+  if(k==='clear'){ $('#f_edate').value=''; return; }
+  $('#f_edate').value=addDaysStr($('#f_date').value||TODAY,+k);
+});
 function openSheet(id,dateKey){
   editing=id?DB.items.find(i=>i.id===id):null;
   editingDate=dateKey||(editing?editing.date:null);
@@ -1519,16 +1548,22 @@ $('#s_q').addEventListener('input',()=>{
   const q=$('#s_q').value.trim().toLowerCase();
   if(!q){$('#s_res').innerHTML='';return;}
   const hits=liveItems().filter(i=>{
-    if(i.type==='memo'||!canSee(i))return false;
+    if(!canSee(i))return false;
+    if(i.type==='memo') return [i.title,i.memoCat].join(' ').toLowerCase().includes(q);
     const p=catOf(i);
     return [i.title,i.note,i.team,i.other,p.name,(i.who||[]).join(' ')].join(' ').toLowerCase().includes(q);
-  }).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,40);
+  }).sort((a,b)=>(b.type==='memo'?'':a.date).localeCompare(b.type==='memo'?'':b.date)).slice(0,40);
   $('#s_res').innerHTML=hits.length?hits.map(i=>{
+    if(i.type==='memo'){
+      return `<div class="resrow" data-memo="${esc(i.memoCat||'ゼミ')}"><div class="rc"><div class="rt">📝 ${esc(i.title)}</div>
+        <div class="rm"><i style="background:${memoColor(i.memoCat||'ゼミ')}"></i>メモ / ${esc(i.memoCat||'ゼミ')}</div></div></div>`;
+    }
     const p=catOf(i);
     return `<div class="resrow" data-open="${i.id}"><div class="rc"><div class="rt">${i.type==='event'?'📅 ':i.done?'✓ ':'☐ '}${esc(i.title)}</div>
       <div class="rm"><i style="background:${p.color}"></i>${esc(p.name)}${i.team?' / '+esc(i.team):''} ・ ${esc(i.date.slice(5).replace('-','/'))}</div></div></div>`;
   }).join(''):`<div class="empty">見つかりませんでした</div>`;
   $('#s_res').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{$('#search').hidden=true;openSheet(b.dataset.open);});
+  $('#s_res').querySelectorAll('[data-memo]').forEach(b=>b.onclick=()=>{$('#search').hidden=true;memoFilter=b.dataset.memo;openMemo();});
 });
 
 /* ============================================================ メモ（ゼミで教わった大切なこと・全員共有） */
@@ -1539,9 +1574,11 @@ const MEMO_CATS=[
   {name:'写メール',color:'#b06b57'}
 ];
 const memoColor=n=>{const c=MEMO_CATS.find(x=>x.name===n);return c?c.color:'#8a8a8a';};
-let memoCat='ゼミ',memoFilter='all';
+let memoCat='ゼミ',memoFilter='all',memoEditId=null;
 const liveMemos=()=>liveItems().filter(i=>i.type==='memo').sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+function memoResetForm(){ memoEditId=null; $('#m_text').value=''; $('#m_add').textContent='＋ 追加する'; $('#m_cancel').hidden=true; }
 function openMemo(){
+  memoResetForm();
   if(!MEMO_CATS.some(c=>c.name===memoCat)) memoCat='ゼミ';
   $('#m_cat').innerHTML=MEMO_CATS.map(c=>`<button type="button" data-mc="${esc(c.name)}" class="${c.name===memoCat?'on':''}">${esc(c.name)}</button>`).join('');
   $('#m_cat').querySelectorAll('[data-mc]').forEach(b=>b.onclick=()=>{ memoCat=b.dataset.mc; $('#m_cat').querySelectorAll('[data-mc]').forEach(x=>x.classList.toggle('on',x.dataset.mc===memoCat)); });
@@ -1567,24 +1604,40 @@ function renderMemoList(){
       const when=dt?`${dt.getMonth()+1}/${dt.getDate()}`:'';
       return `<div class="memo"><span class="mbul" style="background:${memoColor(cn)}"></span>
         <div class="mbody"><div class="mtx">${esc(m.title)}</div><div class="mmeta">${by}・${when}</div></div>
-        ${can?`<button class="mdel" data-mdel="${m.id}" title="削除">✕</button>`:''}</div>`;
+        ${can?`<button class="medit" data-medit="${m.id}" title="編集">✎</button><button class="mdel" data-mdel="${m.id}" title="削除">✕</button>`:''}</div>`;
     }).join('');
   });
   $('#m_list').innerHTML=h||`<div class="empty">まだメモはありません。上の欄から追加できます。</div>`;
+  $('#m_list').querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>{
+    const m=DB.items.find(x=>x.id===b.dataset.medit); if(!m)return;
+    memoEditId=m.id; memoCat=m.memoCat||'ゼミ';
+    $('#m_text').value=m.title; $('#m_add').textContent='更新する'; $('#m_cancel').hidden=false;
+    $('#m_cat').querySelectorAll('[data-mc]').forEach(x=>x.classList.toggle('on',x.dataset.mc===memoCat));
+    $('#memosheet .box').scrollTop=0; $('#m_text').focus();
+  });
   $('#m_list').querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{
     if(!confirm('このメモを削除しますか？'))return;
     const m=DB.items.find(x=>x.id===b.dataset.mdel); if(!m)return;
+    if(memoEditId===m.id) memoResetForm();
     m.deleted=true; m.updatedAt=now(); renderMemoList(); commit([m.id]); toast('メモを削除しました');
   });
 }
 $('#m_add').onclick=()=>{
   const v=$('#m_text').value.trim(); if(!v){ $('#m_text').focus(); return; }
-  const id='i'+now();
-  DB.items.push({id,type:'memo',memoCat,title:v,date:'',time:'',endTime:'',endDate:'',pj:'',other:'',
-    who:[],team:'',teamPj:'',visibility:'all',important:false,rep:'none',days:[],until:'',note:'',remind:'',
-    skip:[],notes:{},done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,updatedAt:now()});
-  $('#m_text').value=''; memoFilter=memoCat; renderMemoList(); commit([id]); toast('メモを追加しました');
+  let id;
+  if(memoEditId){
+    const m=freshItem(DB.items.find(x=>x.id===memoEditId)||{id:memoEditId}); id=m.id;
+    m.title=v; m.memoCat=memoCat; m.updatedAt=now();
+  } else {
+    id='i'+now();
+    DB.items.push({id,type:'memo',memoCat,title:v,date:'',time:'',endTime:'',endDate:'',pj:'',other:'',
+      who:[],team:'',teamPj:'',visibility:'all',important:false,rep:'none',days:[],until:'',note:'',remind:'',
+      skip:[],notes:{},done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,updatedAt:now()});
+  }
+  const wasEdit=!!memoEditId;
+  memoFilter=memoCat; memoResetForm(); renderMemoList(); commit([id]); toast(wasEdit?'メモを更新しました':'メモを追加しました');
 };
+$('#m_cancel').onclick=()=>{ memoResetForm(); };
 $('#mClose').onclick=()=>$('#memosheet').hidden=true;
 $('#memosheet').onclick=e=>{if(e.target.id==='memosheet')$('#memosheet').hidden=true};
 
@@ -1925,10 +1978,12 @@ function parseBd(v){ // 「7/16」「7-16」→ 'MM-DD'。空・不正は ''
 }
 const bdDisp=b=>b?`${+b.slice(0,2)}/${+b.slice(3)}`:'';
 function renderMemList(){
-  $('#c_memlist').innerHTML=memEdit.map((m,i)=>`<div class="memrow"><div class="mn"><b>${esc(m.name)}</b></div>
+  $('#c_memlist').innerHTML=memEdit.map((m,i)=>`<div class="memrow" style="flex-wrap:wrap"><div class="mn"><b>${esc(m.name)}</b></div>
     <input data-mbd="${i}" value="${esc(bdDisp(m.birthday))}" placeholder="🎂 7/16" style="flex:0 0 86px;padding:7px 8px;font-size:12px">
     <button data-munlock="${i}" title="この人の端末で名前を選び直せるようにする">🔓</button>
-    <button class="mdel" data-mdel="${i}">削除</button></div>`).join('')||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
+    <button class="mdel" data-mdel="${i}">削除</button>
+    <input data-mmail="${i}" type="email" value="${esc(m.email||'')}" placeholder="📧 毎朝メール通知の宛先（任意）" style="flex:1 0 100%;padding:7px 8px;font-size:12px;margin-top:4px"></div>`).join('')||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
+  $('#c_memlist').querySelectorAll('[data-mmail]').forEach(inp=>inp.onchange=()=>{ memEdit[+inp.dataset.mmail].email=inp.value.trim(); });
   $('#c_memlist').querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{const i=+b.dataset.mdel;if(!confirm(`「${memEdit[i].name}」を削除しますか？\n担当・チームからも外れます。`))return;memEdit.splice(i,1);renderMemList();refreshMeOptions();});
   $('#c_memlist').querySelectorAll('[data-mbd]').forEach(inp=>inp.onchange=()=>{
     const i=+inp.dataset.mbd, bd=parseBd(inp.value);
@@ -2042,7 +2097,7 @@ $('#cfgOk').onclick=async()=>{
   if(wasAdmin){ // AIキー・モデル・メンバーは管理者のみ変更可
     CFG.geminiKey=$('#c_gkey').value.trim();
     CFG.geminiModel=$('#c_gmodel').value;
-    CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||''})).filter(m=>m.name);
+    CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||'',email:m.email||''})).filter(m=>m.name);
     if(CFG.url&&CFG.geminiKey) apiPost({action:'setgemkey',gemkey:CFG.geminiKey}).catch(()=>{});   // キーを全員に配る（全員がAIを使える）
   }
   CFG.spanArrow=$('#c_span').checked;
@@ -2073,7 +2128,7 @@ $('#cfgOk').onclick=async()=>{
       if(r&&r.pinset){PINSET=r.pinset;LS.set('pinset',PINSET);}
     }catch(e){ /* オフライン等は後続同期でリトライ */ }
   }
-  if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:''});
+  if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:'',email:''});
   LS.set('cfg',CFG);LS.set('me',ME);$('#cfg').hidden=true;
   if(wasAdmin&&CFG.url){ apiPost({action:'members',members:CFG.members}).catch(()=>{}); } // 名簿を全員に配る
   if(CFG.url){ await syncNow(); } else { setSync('off'); render(); }
@@ -2255,7 +2310,7 @@ function applyMeta(remote){
   // 名簿（誕生日つき）はサーバが正。管理者が保存すると全員に配られる。
   if(Array.isArray(remote.members)&&remote.members.length){
     const before=JSON.stringify(CFG.members);
-    CFG.members=remote.members.map(m=>({name:String(m.name||''),birthday:String(m.birthday||'')})).filter(m=>m.name);
+    CFG.members=remote.members.map(m=>({name:String(m.name||''),birthday:String(m.birthday||''),email:String(m.email||'')})).filter(m=>m.name);
     LS.set('cfg',CFG);
     // 設定を開いている最中に名簿が届いたら、名前の選択肢をその場で最新にする（初回起動時の「古い名前しか出ない」対策）
     if(before!==JSON.stringify(CFG.members)&&!$('#cfg').hidden){
