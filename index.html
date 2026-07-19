@@ -687,8 +687,9 @@ let ADMIN_NAME = (CFG.adminName||'');       // 管理者にできる本名（met
 let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
 let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
 // 管理者＝「登録された本名(ADMIN_NAME)」かつ「この端末でパス解錠済み」。未登録の間だけ、名前を選んだ人がパスで登録できる。
-let _maint=false;   // メンテナンスモード：Claudeが修復・システム点検で使う（UIには一切出さない。コンソールから claudeMaint(true) で有効化）
-window.claudeMaint=(on)=>{ _maint=(on!==false); try{ toast('メンテナンスモード: '+(_maint?'ON':'OFF')); render(); }catch(e){} return _maint; };
+let _maint=false;   // メンテナンスモード：Claudeが修復・システム点検で使う（UIには一切出さない。合言葉つきでのみ有効化）
+window.claudeMaint=(pass)=>{ if(pass!==(CFG.appKey||'9th26131')){ return false; } _maint=true; try{ toast('メンテナンスモード ON'); render(); }catch(e){} return true; };
+window.claudeMaintOff=()=>{ _maint=false; try{ render(); }catch(e){} return false; };
 const canEdit=()=>!!ME||_maint;   // 追加・編集できるのは「名前を選んでログインした人」だけ（メンテ時のみClaudeが一時許可）
 function requireName(){ if(canEdit()) return true; toast('追加・編集するには、まず設定で自分の名前を選んでください'); return false; }
 const isAdmin = () => _maint || (!CFG.url && !ME) || (ADMIN_OK && (ADMIN_NAME==='' || ME===ADMIN_NAME));
@@ -2424,7 +2425,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='36'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='37'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
