@@ -136,6 +136,22 @@ button.teamline:active{opacity:.6}
 .goalline{display:flex;gap:10px;align-items:baseline;padding:8px 2px;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.6}
 .goalline:last-child{border-bottom:none}
 .goalline span{flex:0 0 auto;font-size:10px;font-weight:700;color:var(--brass-d);border:1px solid var(--brass);border-radius:6px;padding:1px 7px;letter-spacing:.05em}
+.goalline.gtap{cursor:pointer}
+.goalline .gcar{border:none;color:var(--faint);font-size:10px;margin-left:auto;padding:0}
+.goaldetail{padding:8px 4px 10px;margin:0 0 4px;background:var(--card);border-radius:10px;border:1px solid var(--line)}
+.goaldrow{display:flex;gap:9px;align-items:baseline;padding:6px 8px;font-size:12.5px;line-height:1.55}
+.goaldrow+.goaldrow{border-top:1px dashed var(--line)}
+.goaldrow span{flex:0 0 auto;font-size:10px;font-weight:700;color:var(--brass-d);border:1px solid var(--brass);border-radius:6px;padding:1px 7px;white-space:nowrap}
+.goaldrow b{font-weight:600}
+.msec{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px;margin:16px 0 6px;color:var(--ink2,var(--muted))}
+.msec .mdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.msec .mcnt{font-size:11px;color:var(--faint);font-weight:600}
+.memo{display:flex;gap:9px;align-items:flex-start;padding:9px 4px;border-bottom:1px dashed var(--line)}
+.memo .mbul{width:6px;height:6px;border-radius:50%;flex:0 0 auto;margin-top:7px}
+.memo .mbody{flex:1;min-width:0}
+.memo .mtx{font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.memo .mmeta{font-size:10.5px;color:var(--faint);margin-top:2px}
+.memo .mdel{flex:0 0 auto;border:none;background:none;color:var(--faint);font-size:14px;padding:2px 6px;cursor:pointer}
 
 .panel{margin-top:18px}
 .item{display:flex;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px 12px 15px;margin-bottom:9px;align-items:flex-start;position:relative;overflow:hidden;box-shadow:var(--sh-s)}
@@ -393,6 +409,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="sugg" id="f_sug" hidden></div>
   <label id="l_date">期限</label>
   <input id="f_date" type="date">
+  <div id="w_edate" hidden><label>終了日<span style="font-weight:600;color:var(--muted)">（数日にわたる予定のとき・任意）</span></label><input id="f_edate" type="date"></div>
   <div id="w_time" hidden>
     <label style="display:flex;align-items:center;justify-content:space-between">時刻
       <span style="font-weight:600;color:var(--muted);display:flex;align-items:center;gap:5px"><input type="checkbox" id="f_allday" style="width:auto">終日</span>
@@ -489,6 +506,20 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <input id="s_q" placeholder="予定・やること・プロジェクト・担当・メモから検索" autocomplete="off">
   <div class="reslist" id="s_res"></div>
   <div class="acts"><button class="no" id="sClose">とじる</button></div>
+</div></div>
+
+<!-- メモ（ゼミで教わった大切なこと・全員共有） -->
+<div class="sheet" id="memosheet" hidden><div class="box">
+  <div class="grab"></div>
+  <h3>メモ</h3>
+  <p class="help">ゼミの中で教わった大切なことを箇条書きで残せます。全員が見られます。</p>
+  <label>メモを追加</label>
+  <textarea id="m_text" placeholder="例：数字の裏にある『なぜ』を必ず一言そえる"></textarea>
+  <div class="seg" id="m_cat"></div>
+  <div class="acts" style="margin-top:6px"><button class="go" id="m_add" style="flex:1">＋ 追加する</button></div>
+  <div class="seg" id="m_filter" style="margin-top:14px"></div>
+  <div id="m_list"></div>
+  <div class="acts" style="margin-top:10px"><button class="no" id="mClose">とじる</button></div>
 </div></div>
 
 <!-- AI -->
@@ -716,7 +747,7 @@ function migrate(db){
     return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams,members:Array.isArray(p.members)?p.members:[]};
   });
   db.items=(db.items||[]).map(i=>({
-    who:[],team:'',teamPj:'',other:'',visibility:'all',important:false,note:'',remind:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',skip:[],notes:{},createdBy:'',updatedAt:t,deleted:false,...i,
+    who:[],team:'',teamPj:'',other:'',visibility:'all',important:false,note:'',remind:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',endDate:'',memoCat:'',skip:[],notes:{},createdBy:'',updatedAt:t,deleted:false,...i,
     who:Array.isArray(i.who)?i.who:(i.who?[i.who]:[]),
     days:Array.isArray(i.days)?i.days:[],
     comments:Array.isArray(i.comments)?i.comments:[],
@@ -758,7 +789,13 @@ const z=n=>String(n).padStart(2,'0');
 const ymd=d=>`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
 const TODAY=ymd(new Date());
 let view='home',cur=new Date(),sel=TODAY,filter=null,teamFilter=null,mineOnly=false,showDone=false,editing=null,editingDate=null;
-let statusFilter=null,openProg=null,openTeam=null;   // 数値タップの絞り込み／進捗・チームの開いているアコーディオン
+let statusFilter=null,openProg=null,openTeam=null,openGoal=false;   // 数値タップの絞り込み／進捗・チーム・目標の開いているアコーディオン
+// 水野ゼミの目標をタップしたときに開く詳細（行動指針）
+const ZEMI_GOAL_DETAIL=[
+  {k:'行動の方向',v:'毎日、必ず、新しい何かを研究室として実施する。'},
+  {k:'行動の種類',v:'インプット　➡　具体行動｜理論・体験'},
+  {k:'行動の種類',v:'アウトプット　➡　具体行動｜ゼミ内・ゼミ外'}
+];
 let syncState='off',pending=[],_lastSync='';
 
 const $=s=>document.querySelector(s);
@@ -792,6 +829,7 @@ const teamColor=(pid,name)=>{const p=pj(pid);const tm=(p.teams||[]).find(t=>t.na
 function occursOn(i,key){
   if(i.skip&&i.skip.includes(key)) return false;   // 「この回だけ削除」した日
   if(i.date===key) return true;
+  if(i.type==='event'&&i.endDate&&i.endDate>i.date&&key>=i.date&&key<=i.endDate) return true;   // 数日にわたる予定（開始日〜終了日）
   if(i.type!=='event'||!i.rep||i.rep==='none') return false;
   if(key<i.date) return false;
   if(i.until&&key>i.until) return false;
@@ -880,11 +918,13 @@ function renderHome(){
     </div></div>`;
   h+=`<div class="toolrow">
       <button id="tAI"><span class="ic">✨</span>AI</button>
-      <button id="tNotif"><span class="ic">🔔</span>通知の設定</button>
+      <button id="tMemo"><span class="ic">📝</span>メモ</button>
     </div>`;
   if(GOALS.zemi||GOALS.gen){
+    const gd=ZEMI_GOAL_DETAIL.map(r=>`<div class="goaldrow"><span>${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join('');
     h+=`<div class="homeblock"><div class="sec">目標</div>`
-      +(GOALS.zemi?`<div class="goalline"><span>水野ゼミ</span><b class="mincho">${esc(GOALS.zemi)}</b></div>`:'')
+      +(GOALS.zemi?`<div class="goalline gtap ${openGoal?'gopen':''}" data-goal="zemi"><span>水野ゼミ</span><b class="mincho">${esc(GOALS.zemi)}</b><span class="gcar">${openGoal?'▲':'▼'}</span></div>`
+        +(openGoal?`<div class="goaldetail">${gd}</div>`:''):'')
       +(GOALS.gen?`<div class="goalline"><span>9期生</span><b class="mincho">${esc(GOALS.gen)}</b></div>`:'')
       +`</div>`;
   }
@@ -901,7 +941,8 @@ function renderHome(){
   h+=`</div>`;
   el.innerHTML=h;
   $('#tAI').onclick=openAI;
-  $('#tNotif').onclick=()=>{ openCfg(); setTimeout(()=>{const n=$('#notifWrap'); if(n)n.scrollIntoView({behavior:'smooth',block:'center'});},120); };
+  $('#tMemo').onclick=openMemo;
+  el.querySelectorAll('[data-goal]').forEach(b=>b.onclick=()=>{ openGoal=!openGoal; renderHome(); });
   el.querySelectorAll('[data-stat]').forEach(b=>b.onclick=()=>{
     if(b.dataset.stat==='today'){ cur=new Date(); sel=TODAY; view='cal'; render(); return; }
     statusFilter=b.dataset.stat; view='todo'; render();
@@ -1073,7 +1114,7 @@ function card(i,dateKey){
         <span class="pj" style="color:${p.color}">${esc(p.name)}</span>
         ${teamHtml}${whoHtml}
         ${i.visibility==='members'?'<span class="cbadge">🔒関係者</span>':''}
-        <span>${key.slice(5).replace('-','/')}</span>
+        <span>${key.slice(5).replace('-','/')}${i.type==='event'&&i.endDate&&i.endDate>i.date?'〜'+i.endDate.slice(5).replace('-','/'):''}</span>
         ${i.type==='event'&&i.time&&i.endTime?`<span>${i.time}〜${i.endTime}</span>`:''}
         ${lab?`<span class="dcount ${cls}">${lab}</span>`:''}${repLab}${cc}
       </div>
@@ -1189,7 +1230,7 @@ function paintWho(){
 function setKind(k){
   kind=k;
   document.querySelectorAll('#kind button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
-  $('#w_time').hidden=k!=='event'; $('#w_rep').hidden=k!=='event'; $('#w_who').hidden=false;
+  $('#w_time').hidden=k!=='event'; $('#w_edate').hidden=k!=='event'; $('#w_rep').hidden=k!=='event'; $('#w_who').hidden=false;
   $('#w_alsotask').hidden=k!=='event';   // 既存の予定の編集時にも「やることにも追加」できる
   $('#l_date').textContent=k==='task'?'期限':'日付';
   updateRepDays();
@@ -1225,6 +1266,7 @@ function openSheet(id,dateKey){
   pickedDays=editing&&editing.days?[...editing.days]:[]; paintDays();
   $('#f_title').value=editing?editing.title:'';
   $('#f_date').value=editing?editing.date:(view==='cal'?sel:TODAY);
+  $('#f_edate').value=editing?.endDate||'';
   $('#f_time').value=editing?.time||'';
   $('#f_end').value=editing?.endTime||'';
   $('#f_allday').checked=!!(editing&&editing.type==='event'&&!editing.time);
@@ -1247,6 +1289,7 @@ function renderSugg(){
   const q=$('#f_title').value.trim();
   const seen={},list=[];
   liveItems().slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).forEach(i=>{
+    if(i.type==='memo')return;
     if(!i.title||seen[i.title])return; seen[i.title]=1;
     if(q&&(!i.title.includes(q)||i.title===q))return;
     list.push(i);
@@ -1303,7 +1346,9 @@ $('#save').onclick=()=>{
   if(vis==='team'&&!tv){ toast('チーム限定にするには、プロジェクト＆係にチームか担当メンバーの登録が必要です'); return; }
   const tsp=tv?tv.split('::'):['',''];
   if(vis==='members'&&!pickedWho.length){ toast('個人指定は「担当・共有する人」を選んでください'); return; }
-  const o={type:kind,pj:isOther?'':pjv,other:isOther?$('#f_other').value.trim():'',title:t,date:$('#f_date').value||TODAY,
+  const _d0=$('#f_date').value||TODAY, _d1=$('#f_edate').value;
+  const o={type:kind,pj:isOther?'':pjv,other:isOther?$('#f_other').value.trim():'',title:t,date:_d0,
+    endDate:(isEv&&_d1&&_d1>_d0)?_d1:'',
     time:isEv&&!allday?$('#f_time').value:'', endTime:isEv&&!allday?$('#f_end').value:'',
     who:pickedWho.slice(),team:tsp[1]||'',teamPj:tsp[1]?tsp[0]:'',
     visibility:vis==='members'?'members':'all', important:$('#f_imp').checked,
@@ -1474,7 +1519,7 @@ $('#s_q').addEventListener('input',()=>{
   const q=$('#s_q').value.trim().toLowerCase();
   if(!q){$('#s_res').innerHTML='';return;}
   const hits=liveItems().filter(i=>{
-    if(!canSee(i))return false;
+    if(i.type==='memo'||!canSee(i))return false;
     const p=catOf(i);
     return [i.title,i.note,i.team,i.other,p.name,(i.who||[]).join(' ')].join(' ').toLowerCase().includes(q);
   }).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,40);
@@ -1485,6 +1530,63 @@ $('#s_q').addEventListener('input',()=>{
   }).join(''):`<div class="empty">見つかりませんでした</div>`;
   $('#s_res').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{$('#search').hidden=true;openSheet(b.dataset.open);});
 });
+
+/* ============================================================ メモ（ゼミで教わった大切なこと・全員共有） */
+const MEMO_CATS=[
+  {name:'ゼミ',color:'#5b6b66'},
+  {name:'プロジェクト',color:'#a9884f'},
+  {name:'輪読',color:'#6f6597'},
+  {name:'写メール',color:'#b06b57'}
+];
+const memoColor=n=>{const c=MEMO_CATS.find(x=>x.name===n);return c?c.color:'#8a8a8a';};
+let memoCat='ゼミ',memoFilter='all';
+const liveMemos=()=>liveItems().filter(i=>i.type==='memo').sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+function openMemo(){
+  if(!MEMO_CATS.some(c=>c.name===memoCat)) memoCat='ゼミ';
+  $('#m_cat').innerHTML=MEMO_CATS.map(c=>`<button type="button" data-mc="${esc(c.name)}" class="${c.name===memoCat?'on':''}">${esc(c.name)}</button>`).join('');
+  $('#m_cat').querySelectorAll('[data-mc]').forEach(b=>b.onclick=()=>{ memoCat=b.dataset.mc; $('#m_cat').querySelectorAll('[data-mc]').forEach(x=>x.classList.toggle('on',x.dataset.mc===memoCat)); });
+  renderMemoList();
+  $('#memosheet').hidden=false;
+  setTimeout(()=>$('#m_text').focus(),50);
+}
+function renderMemoList(){
+  $('#m_filter').innerHTML=`<button type="button" data-mf="all" class="${memoFilter==='all'?'on':''}">すべて</button>`
+    +MEMO_CATS.map(c=>`<button type="button" data-mf="${esc(c.name)}" class="${memoFilter===c.name?'on':''}">${esc(c.name)}</button>`).join('');
+  $('#m_filter').querySelectorAll('[data-mf]').forEach(b=>b.onclick=()=>{ memoFilter=b.dataset.mf; renderMemoList(); });
+  const all=liveMemos();
+  const cats=memoFilter==='all'?MEMO_CATS.map(c=>c.name):[memoFilter];
+  let h='';
+  cats.forEach(cn=>{
+    const list=all.filter(m=>(m.memoCat||'ゼミ')===cn);
+    if(!list.length) return;
+    h+=`<div class="msec"><span class="mdot" style="background:${memoColor(cn)}"></span>${esc(cn)}<span class="mcnt">${list.length}</span></div>`;
+    h+=list.map(m=>{
+      const can=isAdmin()||m.createdBy===ME;
+      const by=m.createdBy?esc(dispName(m.createdBy)):'メンバー';
+      const dt=m.updatedAt?new Date(m.updatedAt):null;
+      const when=dt?`${dt.getMonth()+1}/${dt.getDate()}`:'';
+      return `<div class="memo"><span class="mbul" style="background:${memoColor(cn)}"></span>
+        <div class="mbody"><div class="mtx">${esc(m.title)}</div><div class="mmeta">${by}・${when}</div></div>
+        ${can?`<button class="mdel" data-mdel="${m.id}" title="削除">✕</button>`:''}</div>`;
+    }).join('');
+  });
+  $('#m_list').innerHTML=h||`<div class="empty">まだメモはありません。上の欄から追加できます。</div>`;
+  $('#m_list').querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{
+    if(!confirm('このメモを削除しますか？'))return;
+    const m=DB.items.find(x=>x.id===b.dataset.mdel); if(!m)return;
+    m.deleted=true; m.updatedAt=now(); renderMemoList(); commit([m.id]); toast('メモを削除しました');
+  });
+}
+$('#m_add').onclick=()=>{
+  const v=$('#m_text').value.trim(); if(!v){ $('#m_text').focus(); return; }
+  const id='i'+now();
+  DB.items.push({id,type:'memo',memoCat,title:v,date:'',time:'',endTime:'',endDate:'',pj:'',other:'',
+    who:[],team:'',teamPj:'',visibility:'all',important:false,rep:'none',days:[],until:'',note:'',remind:'',
+    skip:[],notes:{},done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,updatedAt:now()});
+  $('#m_text').value=''; memoFilter=memoCat; renderMemoList(); commit([id]); toast('メモを追加しました');
+};
+$('#mClose').onclick=()=>$('#memosheet').hidden=true;
+$('#memosheet').onclick=e=>{if(e.target.id==='memosheet')$('#memosheet').hidden=true};
 
 /* ============================================================ 予定の展開（AI・通知用） */
 function upcoming(days){
@@ -1607,7 +1709,9 @@ function buildAIContext(){
   upcoming(14).forEach(o=>lines.push('- '+lineOf(o)+`〔id:${o.i.id}〕`));   // idはAIが削除・完了指定に使う
   // 全予定・タスクの一覧（2週間より先も含む。一括削除などに必要）
   const listed=new Set(); upcoming(14).forEach(o=>listed.add(o.i.id)); overdue.forEach(i=>listed.add(i.id));
-  const rest=liveItems().filter(i=>canSee(i)&&!listed.has(i.id)&&!(i.type==='task'&&i.done)).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,250);
+  const rest=liveItems().filter(i=>i.type!=='memo'&&canSee(i)&&!listed.has(i.id)&&!(i.type==='task'&&i.done)).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,250);
+  const memos=liveMemos();
+  if(memos.length){ lines.push('\n■ゼミで教わった大切なこと（メモ）'); memos.slice(0,60).forEach(m=>lines.push(`- [${m.memoCat||'ゼミ'}] ${m.title}`)); }
   if(rest.length){
     lines.push('\n■その他すべての予定・タスク');
     rest.forEach(i=>lines.push(`- ${i.type==='event'?'📅':'☐'}${i.date} ${i.title}${i.rep&&i.rep!=='none'?'(くり返し:'+(REPLABEL[i.rep]||i.rep)+')':''}（${catOf(i).name}）〔id:${i.id}〕`));
