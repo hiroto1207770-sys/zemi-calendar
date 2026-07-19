@@ -637,6 +637,8 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   </div>
 
   <div class="sec" style="margin-top:22px">まとめて追加・データ</div>
+  <label>使い方</label>
+  <button type="button" class="no" id="c_tut" style="width:100%">🔰 かんたんな使い方をもう一度見る</button>
   <label>年間予定のまとめて追加</label>
   <button type="button" class="no" id="c_bulk" style="width:100%">PDF・テキストから取り込む</button>
   <label>バックアップ</label>
@@ -824,7 +826,7 @@ const inTeam=i=>!!ME&&(teamMembers(i.teamPj||i.pj,i.team).includes(ME)||(i.who||
    ※自分(ME)未設定の端末は自分の判定ができないため、チーム/関係者のみの項目は出ない（共有時は起動時に名前選択を促す） */
 const canSee=i=>{
   if(i.visibility==='members') return !!ME&&((i.who||[]).includes(ME)||i.createdBy===ME);
-  if(i.team) return !CFG.url||!ME ? true : inTeam(i);   // 端末内のみ・名前未設定の端末では全部見える（「データが消えた」誤解を防ぐ）
+  if(i.team) return !CFG.url ? true : inTeam(i);   // チーム限定はそのチームのメンバー（＋担当・作成者）だけ。名前未設定の端末には出さない（係じゃない人に見える不具合の修正）
   return true;
 };
 // 案件なしの予定は自由入力ラベル(other)を使う
@@ -1555,10 +1557,12 @@ function _romaji(s){ let o=''; for(const ch of s){ if(ch==='ッ')continue; o+=(_
 const _skel=x=>x.replace(/[aiueo]/g,'');
 function searchMatch(rawQ,target){
   const q=_norm(rawQ), t=_norm(target); if(!q) return false;
-  if(t.includes(q)) return true;
-  const qr=_romaji(q), tr=_romaji(t).replace(/c/g,'k');   // 英名側もローマ字寄せ（co→ko）
-  if(qr.length>=2 && tr.includes(qr)) return true;
-  if(_skel(qr).length>=3 && _skel(tr).includes(_skel(qr))) return true;   // 母音を省いた骨格一致（読み⇔英名）
+  if(t.includes(q)) return true;                 // そのまま部分一致（大小/全半角/かなを吸収済み）
+  const kk=s=>_romaji(s).replace(/c/g,'k');       // ローマ字化＋co→ko等でゆれを吸収
+  const qr=kk(q), tr=kk(t);
+  if(qr.length>=2 && (tr.includes(qr)||qr.includes(tr))) return true;   // 読み⇔英名のローマ字一致（双方向）
+  const qs=_skel(qr), ts=_skel(tr);               // 母音を省いた骨格一致（日本語読み⇔英語名のズレを埋める）
+  if(qs.length>=2 && (ts.includes(qs)||qs.includes(ts))) return true;
   return false;
 }
 $('#s_q').addEventListener('input',()=>{
@@ -2150,6 +2154,7 @@ $('#cfgOk').onclick=async()=>{
 };
 
 /* ============================================================ まとめて追加（年間予定など） */
+$('#c_tut').onclick=()=>{ $('#cfg').hidden=true; _tutN=0; showTut(); };   // 使い方チュートリアルをもう一度見る
 $('#c_bulk').onclick=()=>{ $('#cfg').hidden=true; openBulk(); };   // 設定を閉じてから開く（設定の裏に隠れて見えなかった不具合の修正）
 function openBulk(){
   $('#bk_pj').innerHTML=activeProjects().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')+`<option value="__other__">その他（自由入力）</option>`;
@@ -2405,7 +2410,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='34'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='35'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
