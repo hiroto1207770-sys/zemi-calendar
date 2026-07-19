@@ -665,10 +665,10 @@ const now = () => Date.now();
 // 初期名簿は本名（サーバの名簿が正だが、初回起動・同期前でも正しい名前が出るように）
 const MEMBERS0 = ['田中大翔','根津柚花','村山美織梨','大野萌衣','上野さくら','東久保結衣','鈴木彩花','市岡佑梨菜','大塚莉乃','泉谷宗汰','椙山真衣','菅原月碧','会田葵'].map(n=>({name:n}));
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
-const DEFAULT_KEY='9th26131';   // ゼミ共通の合言葉。端末に埋め込んで「開くだけで同期」に（新しい端末でデータが出ない問題の解消）
-const CFG = Object.assign({ url:DEFAULT_URL, appKey:DEFAULT_KEY, logo:'', theme:'light', geminiKey:'', geminiModel:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 if(!CFG.url) CFG.url=DEFAULT_URL;
-if(!CFG.appKey) CFG.appKey=DEFAULT_KEY;   // 旧端末で空になっていても既定の合言葉で必ず接続できるように
+// 合言葉は必須（自動では入れない）。ただし「名前を選んでログイン済みの端末」は一度入れたら記憶し、
+// 名前未設定の端末は毎回入力を求める（＝合言葉を知っていれば閲覧はできるが、開くたびに要入力）。
 // 番号つきの旧モデルは次々に廃止される（limit:0 / no longer available エラー）→「自動選択」へ移行
 if(/^gemini-(2\.5|2\.0|1\.5)/.test(CFG.geminiModel||'')){ CFG.geminiModel=''; LS.set('cfg',CFG); }
 // 開発初期のひらがな名簿が残っている端末は本名リストへ自動移行（正式な名簿は次の同期でサーバから届く）
@@ -679,6 +679,7 @@ if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON
 CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:'',email:''}:{name:m.name||'',birthday:m.birthday||'',email:m.email||''}).filter(m=>m.name);
 LS.set('cfg',CFG);
 let ME = LS.get('me', '');
+if(!ME) CFG.appKey='';   // 名前未設定の端末は合言葉を記憶しない＝開くたびに毎回入力を求める（名前を選んだ端末だけ記憶）
 let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者パスワードで解除）
 let ADMIN_PASS = (CFG.adminPass||'1270');  // 管理者パスワード（サーバのmetaで全員共有・変更可。既定1270）
 const ADMIN_DEFAULT = '田中大翔';           // 管理者メニューを出す本名（この人が選ばれたときだけ表示。ほかの人には管理者の存在を見せない）
@@ -686,7 +687,11 @@ let ADMIN_NAME = (CFG.adminName||'');       // 管理者にできる本名（met
 let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
 let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
 // 管理者＝「登録された本名(ADMIN_NAME)」かつ「この端末でパス解錠済み」。未登録の間だけ、名前を選んだ人がパスで登録できる。
-const isAdmin = () => (!CFG.url && !ME) || (ADMIN_OK && (ADMIN_NAME==='' || ME===ADMIN_NAME));
+let _maint=false;   // メンテナンスモード：Claudeが修復・システム点検で使う（UIには一切出さない。コンソールから claudeMaint(true) で有効化）
+window.claudeMaint=(on)=>{ _maint=(on!==false); try{ toast('メンテナンスモード: '+(_maint?'ON':'OFF')); render(); }catch(e){} return _maint; };
+const canEdit=()=>!!ME||_maint;   // 追加・編集できるのは「名前を選んでログインした人」だけ（メンテ時のみClaudeが一時許可）
+function requireName(){ if(canEdit()) return true; toast('追加・編集するには、まず設定で自分の名前を選んでください'); return false; }
+const isAdmin = () => _maint || (!CFG.url && !ME) || (ADMIN_OK && (ADMIN_NAME==='' || ME===ADMIN_NAME));
 let DEV = LS.get('dev',''); if(!DEV){ DEV='d'+Math.random().toString(36).slice(2)+Date.now().toString(36); LS.set('dev',DEV); } // この端末の識別子（本名の予約に使う）
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
 let CLAIMS  = LS.get('claims', {});        // 本名→端末IDの配列（同じ人の複数端末を許可）
@@ -1102,8 +1107,8 @@ function renderPj(){
   if(done.length) h+=`<div class="sec" style="margin-top:20px;opacity:.7">✓ 完了済みプロジェクト（${done.length}）</div>`
     +`<div style="opacity:.62">`+done.map(p=>progRow(p,true)).join('')+`</div>`;
   $('#pjList').innerHTML=h;
-  $('#addPj').onclick=()=>openPjSheet(null);
-  document.querySelectorAll('[data-editpj]').forEach(b=>b.onclick=e=>{e.stopPropagation();openPjSheet(b.dataset.editpj);});
+  $('#addPj').onclick=()=>{ if(!requireName())return; openPjSheet(null); };
+  document.querySelectorAll('[data-editpj]').forEach(b=>b.onclick=e=>{e.stopPropagation();if(!requireName())return;openPjSheet(b.dataset.editpj);});
   document.querySelectorAll('[data-tteam]').forEach(b=>b.onclick=()=>{
     const [pid,tm]=b.dataset.tteam.split('::'); filter=pid; teamFilter=tm; view='todo'; render();
   });
@@ -1144,7 +1149,7 @@ function card(i,dateKey){
     </div></div>`;
 }
 function bind(sc){
-  document.querySelectorAll(sc+' [data-done]').forEach(b=>b.onclick=(e)=>{e.stopPropagation();const i=DB.items.find(x=>x.id===b.dataset.done);i.done=!i.done;i.doneAt=i.done?now():0;i.updatedAt=now();commit([i.id]);});
+  document.querySelectorAll(sc+' [data-done]').forEach(b=>b.onclick=(e)=>{e.stopPropagation();if(!requireName())return;const i=DB.items.find(x=>x.id===b.dataset.done);i.done=!i.done;i.doneAt=i.done?now():0;i.updatedAt=now();commit([i.id]);});
   // カードのどこをタップしても開ける（チェック・リンクは除く）
   document.querySelectorAll(sc+' .item[data-id]').forEach(el=>el.onclick=e=>{
     if(e.target.closest('[data-done]')||e.target.closest('a')) return;
@@ -1156,6 +1161,7 @@ function render(){
   ['home','cal','todo','pj'].forEach(v=>$('#v-'+v).hidden=v!==view);
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
   if(view==='home')renderHome(); if(view==='cal')renderCal(); if(view==='todo')renderTodo(); if(view==='pj')renderPj();
+  const fab=$('#add'); if(fab) fab.style.display=canEdit()?'':'none';   // 名前未設定は閲覧のみ（＋ボタンを隠す）
   renderSync();
 }
 // 自動同期後の描き直し：シートを開いている・入力中の間は先送りする（画面が作り直されてタップが効かなくなるのを防ぐ）
@@ -1183,7 +1189,8 @@ async function flush(){
   if(!CFG.url||!pending.length) return;
   if(syncState==='busy'){ setTimeout(flush,1500); return; }   // 同期中でも保存が滞留しないよう少し後に自動再送
   const ids=pending.splice(0);
-  const changed={projects:DB.projects.filter(p=>ids.includes(p.id)),items:DB.items.filter(i=>ids.includes(i.id))};
+  const okId=x=>x&&x.id&&x.id!=='undefined'&&x.id!=='null';   // 壊れたidは送らない（データ破損の再発防止）
+  const changed={projects:DB.projects.filter(p=>ids.includes(p.id)&&okId(p)),items:DB.items.filter(i=>ids.includes(i.id)&&okId(i))};
   setSync('busy');
   try{ const merged=await API.merge(changed); if(merged&&merged.projects){DB=migrate(mergeInto(DB,merged));LS.set('db',DB);render();} setSync('ok'); }
   catch(e){ console.warn('同期失敗',e); ids.forEach(id=>{if(!pending.includes(id))pending.push(id);}); setSync('err'); }
@@ -1357,6 +1364,7 @@ function renderComments(){
   $('#cmtList').innerHTML=cs.map(c=>`<div class="cmt"><b>${esc(dispName(c.by)||'メンバー')}</b><span class="at">${esc(c.at||'')}</span><p>${esc(c.text)}</p></div>`).join('')||`<div style="font-size:12px;color:var(--faint);padding:2px 0 6px">まだコメントはありません</div>`;
 }
 $('#cmtSend').onclick=()=>{
+  if(!requireName())return;
   const v=$('#cmtInput').value.trim();if(!v||!editing)return;
   const d=new Date(); editing=freshItem(editing);
   editing.comments.push({by:ME||'メンバー',text:v,at:`${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`,
@@ -1364,12 +1372,13 @@ $('#cmtSend').onclick=()=>{
   editing.updatedAt=now();$('#cmtInput').value='';renderComments();commit([editing.id]);
 };
 $('#cmtInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('#cmtSend').click();});
-$('#add').onclick=()=>openSheet(null);
+$('#add').onclick=()=>{ if(!requireName())return; openSheet(null); };
 $('#toBulk').onclick=()=>{ $('#sheet').hidden=true; openBulk(); };
 $('#cancel').onclick=()=>$('#sheet').hidden=true;
 $('#sheet').onclick=e=>{if(e.target.id==='sheet')$('#sheet').hidden=true};
 document.querySelectorAll('#kind button').forEach(b=>b.onclick=()=>setKind(b.dataset.k));
 $('#save').onclick=()=>{
+  if(!requireName())return;
   const t=$('#f_title').value.trim();if(!t){$('#f_title').focus();return}
   const isEv=kind==='event', allday=isEv&&$('#f_allday').checked, rep=isEv?$('#f_rep').value:'none';
   const pjv=$('#f_pj').value, isOther=pjv==='__other__';
@@ -1413,6 +1422,7 @@ $('#save').onclick=()=>{
 };
 /* くり返し予定の「この回だけ削除」（skipに日付を積む） */
 $('#delOne').onclick=()=>{
+  if(!requireName())return;
   if(!editing||!editingDate)return;
   if(!confirm(editingDate.slice(5).replace('-','/')+' のこの回だけ削除します。よろしいですか？'))return;
   const tg=freshItem(editing); tg.skip=Array.isArray(tg.skip)?tg.skip:[];
@@ -1421,7 +1431,7 @@ $('#delOne').onclick=()=>{
   $('#sheet').hidden=true; commit([id]);
   toast('この回だけ削除しました',()=>{ const x=DB.items.find(i=>i.id===id); if(x){ x.skip=(x.skip||[]).filter(d=>d!==dk); x.updatedAt=now(); commit([id]); toast('元に戻しました'); } });
 };
-$('#del').onclick=()=>{ if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;commit([id]);
+$('#del').onclick=()=>{ if(!requireName())return; if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;commit([id]);
   toast('削除しました',()=>{ const x=DB.items.find(i=>i.id===id); if(x){ x.deleted=false; x.updatedAt=now(); commit([id]); toast('元に戻しました'); } }); };
 // LINE等への共有（iPhone/Androidは共有シート、PCはLINEの共有ページを開く）
 $('#shareBtn').onclick=async()=>{
@@ -1511,6 +1521,7 @@ $('#pj_addteam').onclick=()=>{ const u=pjUsedColors(); const c=COLORS.find(x=>!u
 $('#pjNo').onclick=()=>$('#pjsheet').hidden=true;
 $('#pjsheet').onclick=e=>{if(e.target.id==='pjsheet')$('#pjsheet').hidden=true};
 $('#pjOk').onclick=()=>{
+  if(!requireName())return;
   const name=$('#pj_name').value.trim();if(!name){$('#pj_name').focus();return;}
   if(pjTeams.some(t=>!t.name.trim())){ toast('名前が入っていないチームがあります（チーム名を入れるか × で消してください）'); return; }
   const teams=pjTeams.map(t=>({name:t.name.trim(),color:t.color,members:(t.members||[]).filter(n=>CFG.members.some(m=>m.name===n))})).filter(t=>t.name);
@@ -1641,6 +1652,7 @@ function renderMemoList(){
   });
 }
 $('#m_add').onclick=()=>{
+  if(!requireName())return;
   const v=$('#m_text').value.trim(); if(!v){ $('#m_text').focus(); return; }
   let id;
   if(memoEditId){
@@ -1868,6 +1880,7 @@ async function askAI(){
   }catch(e){ _aiChat.push({role:'model',text:'エラー: '+e.message}); renderAiChat(false); }
 }
 $('#ai_addbtn').onclick=()=>{
+  if(!requireName())return;
   if(!_aiAdds.length&&!_aiDels.length&&!_aiDones.length) return;
   const lines=[
     ..._aiAdds.map(a=>`＋ ${a.date}${a.time?' '+a.time+(a.endTime?'〜'+a.endTime:''):''} ${a.title}${a.type==='task'?'（やること）':''}`),
@@ -2237,6 +2250,7 @@ function parseBulk(){
 }
 $('#bk_text').addEventListener('input',()=>{ const p=parseBulk(),el=$('#bk_prev'); if(!p.length){el.style.display='none';return;} el.style.display='block'; el.textContent=`${p.length}件を認識：`+p.slice(0,3).map(x=>x.date.slice(5)+(x.time?' '+x.time+(x.endTime?'〜'+x.endTime:''):'')+' '+x.title).join(' / ')+(p.length>3?' …':''); });
 $('#bkOk').onclick=()=>{
+  if(!requireName())return;
   let parsed=parseBulk(); if(!parsed.length){ toast('日付ではじまる行がありません'); return; }
   // すでに同じ内容名・日付・時刻があるものは除外（二重登録防止）
   const all=parsed.length;
@@ -2410,7 +2424,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='35'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='36'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
