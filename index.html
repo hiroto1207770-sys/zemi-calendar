@@ -200,9 +200,11 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 .wadd{margin-left:auto;border:1px solid var(--line);background:var(--card-2);border-radius:8px;width:27px;height:27px;font-weight:700;color:var(--muted)}
 .wempty{font-size:12px;color:var(--faint);padding:2px 0 4px}
 .wday .item{box-shadow:none;margin-bottom:7px}
-/* 連続予定のつなぎ帯（2日目以降。最終日は矢じり） */
-.spanbar{display:block;height:6px;border-radius:2px;margin:3px 1px 0;opacity:.8}
-.spanbar.end{clip-path:polygon(0 0,calc(100% - 7px) 0,100% 50%,calc(100% - 7px) 100%,0 100%)}
+/* 連続予定の矢印（初日=色付きラベル、2日目以降=太い帯、最終日=矢じり。色はプロジェクト／チームの色） */
+.spanbar{display:block;height:9px;border-radius:99px;margin:4px 1px 0;opacity:.95}
+.spanbar.end{border-radius:99px 0 0 99px;clip-path:polygon(0 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,0 100%)}
+.pill.spanS{background:var(--pc)!important;color:#fff!important;border-color:transparent!important;font-weight:700}
+.sw.taken{opacity:.22}
 /* 初回チュートリアル */
 #tut{position:fixed;inset:0;z-index:300;background:rgba(30,32,30,.55);display:grid;place-items:center;padding:26px}
 #tut .tcard{background:var(--card);border-radius:18px;padding:24px 22px;max-width:340px;box-shadow:0 18px 50px rgba(0,0,0,.3)}
@@ -311,6 +313,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 #recap .fin{margin-top:24px;font-size:20px;color:var(--brass-l);opacity:0;animation:rin .8s 1.2s forwards}
 #recap .rclose{margin-top:22px;border:1px solid rgba(255,255,255,.32);color:#fff;border-radius:999px;padding:11px 36px;font-weight:600;font-size:14px;opacity:0;animation:rin .8s 1.8s forwards;background:none}
 .toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--brandbg2);color:#fff;padding:10px 18px;border-radius:999px;font-size:12.5px;font-weight:600;z-index:60;box-shadow:0 6px 20px rgba(26,31,31,.4);opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;max-width:88vw;text-align:center}
+.toast.hasundo{pointer-events:auto}  /* 「元に戻す」ボタンを押せるように（pointer-events:noneだと押しても効かない） */
 .toast.on{opacity:1}
 </style>
 </head>
@@ -652,7 +655,8 @@ function applyTheme(){
 applyTheme();
 if(window.matchMedia){ const mq=matchMedia('(prefers-color-scheme:dark)'); if(mq.addEventListener) mq.addEventListener('change',()=>{ if((CFG.theme||'light')==='auto') applyTheme(); }); }
 
-const COLORS = ['#2e5f53','#a9884f','#4a6274','#8a5a4a','#6a5a7a','#3f7a6e','#94566f','#5a6169','#b0483c','#3d7a86'];
+const COLORS = ['#2e5f53','#a9884f','#4a6274','#8a5a4a','#6a5a7a','#3f7a6e','#94566f','#5a6169','#b0483c','#3d7a86',
+                '#c2564f','#7b5d3e','#4f7350','#37667d','#8d6b3f','#516b46','#6b4f8a','#44607d','#a06a2f','#585e46'];   // 20色（プロジェクト・チームで色がかぶらないように）
 const REPLABEL = {none:'',daily:'毎日',weekly:'毎週',biweekly:'隔週',monthly:'毎月',yearly:'毎年'};
 // 日本の祝日（2026・2027）。カレンダーに赤字＋名称表示。
 const HOLIDAYS = {
@@ -713,7 +717,7 @@ function migrate(db){
 
 /* ------------------ サーバAPI ------------------ */
 async function apiPost(body){
-  body.key=CFG.appKey||''; body.me=ME||'';   // 誰の操作かの記録用（logシート）
+  body.key=CFG.appKey||''; body.me=ME||''; body.v=APP_V;   // me=操作の記録用、v=古い版からの保存をサーバで拒否（データ混同防止）
   const r=await fetch(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
   if(!r.ok) throw new Error('HTTP '+r.status);
   const j=await r.json(); if(j&&j.error) throw new Error(j.error); return j;
@@ -956,10 +960,11 @@ function renderCal(){
       ${hol?`<span class="holname">${esc(hol)}</span>`:''}
       ${bd.length?`<span class="bdname">🎂${esc(bd.join('・'))}</span>`:''}
       ${list.slice(0,cap).map(i=>{
+        const c=i.team?teamColor(i.teamPj||i.pj,i.team):catOf(i).color;   // チームの予定はチーム色、それ以外はプロジェクト色
         if(spans&&i.type==='event'&&prevS.has(sigOf(i)))
-          return `<span class="spanbar ${nextS.has(sigOf(i))?'':'end'}" style="background:${catOf(i).color}"></span>`; // 2日目以降＝つなぎの帯
-        const arrow=spans&&i.type==='event'&&nextS.has(sigOf(i))?'➡':'';
-        return `<span class="pill ${i.type==='event'?'ev':''} ${i.done?'done':''}" style="${i.type==='event'?`--pc:${catOf(i).color}`:`background:${i.team?teamColor(i.teamPj||i.pj,i.team):catOf(i).color}`}">${esc(i.title)}${arrow}</span>`;
+          return `<span class="spanbar ${nextS.has(sigOf(i))?'':'end'}" style="background:${c}"></span>`; // 2日目以降＝つなぎの帯
+        const isStart=spans&&i.type==='event'&&nextS.has(sigOf(i));
+        return `<span class="pill ${i.type==='event'?'ev':''} ${isStart?'spanS':''} ${i.done?'done':''}" style="${i.type==='event'?`--pc:${c}`:`background:${c}`}">${esc(i.title)}${isStart?' ➡':''}</span>`;
       }).join('')}
       ${list.length>cap?`<span class="more">+${list.length-cap}</span>`:''}
     </button>`;
@@ -1107,9 +1112,10 @@ function setSync(s){ syncState=s; renderSync(); }
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 let toastT;
 function toast(m,undoFn){ const t=$('#toast');
+  t.classList.toggle('hasundo',!!undoFn);
   if(undoFn){ t.innerHTML=esc(m)+'<button id="toastUndo">元に戻す</button>'; $('#toastUndo').onclick=()=>{ t.classList.remove('on'); undoFn(); }; }
   else t.textContent=m;
-  t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),undoFn?6000:1800); }
+  t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),undoFn?8000:1800); }
 
 /* ============================================================ 入力シート */
 let kind='task',pickedWho=[],pickedDays=[],vis='all';
@@ -1164,7 +1170,7 @@ function setKind(k){
   kind=k;
   document.querySelectorAll('#kind button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
   $('#w_time').hidden=k!=='event'; $('#w_rep').hidden=k!=='event'; $('#w_who').hidden=false;
-  $('#w_alsotask').hidden=k!=='event'||!!editing;
+  $('#w_alsotask').hidden=k!=='event';   // 既存の予定の編集時にも「やることにも追加」できる
   $('#l_date').textContent=k==='task'?'期限':'日付';
   updateRepDays();
   fillTeamSelect($('#f_pj').value, editing&&editing.team?((editing.teamPj||editing.pj)+'::'+editing.team):'');
@@ -1297,9 +1303,9 @@ $('#save').onclick=()=>{
     const ov=$('#f_onote').value.trim();
     if(ov) rec2.notes[editingDate]=ov; else delete rec2.notes[editingDate];
   }
-  // 予定を「やること」にも同時追加
+  // 予定を「やること」にも同時追加（新規・編集どちらでも。同じものが既にあれば作らない）
   const extra=[];
-  if(!editing&&isEv&&$('#f_alsotask').checked){
+  if(isEv&&$('#f_alsotask').checked&&!liveItems().some(x=>x.type==='task'&&x.title===o.title&&x.date===o.date)){
     const tid='i'+(now()+1);
     DB.items.push({id:tid,type:'task',pj:o.pj,other:o.other,title:o.title,date:o.date,time:'',endTime:'',who:o.who.slice(),
       team:o.team,teamPj:o.teamPj,visibility:o.visibility,important:o.important,rep:'none',days:[],until:'',note:o.note,
@@ -1336,7 +1342,14 @@ $('#shareBtn').onclick=async()=>{
 
 /* ============================================================ 案件編集シート */
 let pjEditing=null,pjColor=COLORS[0],pjTeams=[],pjMembers=[];
-function swatchRow(sel,cb){ return COLORS.map(c=>`<div class="sw ${c===sel?'on':''}" style="background:${c}" data-c="${c}"></div>`).join(''); }
+/* すでに他のプロジェクト・チームで使われている色（＝選ばせない） */
+function pjUsedColors(){
+  const s=new Set();
+  liveProjects().forEach(p=>{ if(pjEditing&&p.id===pjEditing.id) return; s.add(p.color); (p.teams||[]).forEach(t=>s.add(t.color)); });
+  s.add(pjColor); pjTeams.forEach(t=>s.add(t.color));
+  return s;
+}
+function swatchRow(sel,used){ return COLORS.map(c=>`<div class="sw ${c===sel?'on':''} ${used&&used.has(c)&&c!==sel?'taken':''}" style="background:${c}" data-c="${c}"></div>`).join(''); }
 function openPjSheet(id){
   pjEditing=id?DB.projects.find(p=>p.id===id):null;
   $('#pjsheetTitle').textContent=pjEditing?'プロジェクト＆係をなおす':'プロジェクト＆係を追加';
@@ -1344,12 +1357,12 @@ function openPjSheet(id){
   $('#pjDoneWrap').hidden=!pjEditing;
   if(pjEditing) $('#pjDone').textContent=pjEditing.done?'↩ 進行中に戻す':'✓ このプロジェクトを完了にする';
   $('#pj_name').value=pjEditing?pjEditing.name:'';
-  pjColor=pjEditing?pjEditing.color:COLORS[liveProjects().length%COLORS.length];
   pjTeams=pjEditing?pjEditing.teams.map(t=>({...t,members:[...(t.members||[])]})):[];
   pjMembers=pjEditing?[...(pjEditing.members||[])]:[];
+  pjColor=pjEditing?pjEditing.color:'';
+  if(!pjColor){ const u=pjUsedColors(); pjColor=COLORS.find(c=>!u.has(c))||COLORS[liveProjects().length%COLORS.length]; }   // 新規は未使用色を自動で
   pjTeamOpen=-1;
-  $('#pj_colors').innerHTML=swatchRow(pjColor);
-  $('#pj_colors').querySelectorAll('.sw').forEach(s=>s.onclick=()=>{pjColor=s.dataset.c;$('#pj_colors').innerHTML=swatchRow(pjColor);bindColorRow('#pj_colors',()=>pjColor,v=>pjColor=v);});
+  $('#pj_colors').innerHTML=swatchRow(pjColor,pjUsedColors());
   bindColorRow('#pj_colors',()=>pjColor,v=>pjColor=v);
   renderPjMembers();
   renderPjTeams();
@@ -1365,7 +1378,9 @@ function renderPjMembers(){
   });
 }
 function bindColorRow(sc,get,set){
-  document.querySelectorAll(sc+' .sw').forEach(s=>s.onclick=()=>{set(s.dataset.c);document.querySelector(sc).innerHTML=swatchRow(get());bindColorRow(sc,get,set);});
+  document.querySelectorAll(sc+' .sw').forEach(s=>s.onclick=()=>{
+    if(s.classList.contains('taken')){ toast('その色は他のプロジェクト・チームで使用中です'); return; }
+    set(s.dataset.c);document.querySelector(sc).innerHTML=swatchRow(get(),pjUsedColors());bindColorRow(sc,get,set);});
 }
 let pjTeamOpen=-1; // メンバー選択を開いているチーム
 function renderPjTeams(){
@@ -1382,7 +1397,11 @@ function renderPjTeams(){
   </div>`).join('');
   $('#pj_teams').querySelectorAll('[data-tname]').forEach(inp=>inp.oninput=()=>{pjTeams[+inp.dataset.tname].name=inp.value;});
   $('#pj_teams').querySelectorAll('[data-trm]').forEach(b=>b.onclick=()=>{pjTeams.splice(+b.dataset.trm,1);if(pjTeamOpen>=pjTeams.length)pjTeamOpen=-1;renderPjTeams();});
-  $('#pj_teams').querySelectorAll('[data-tcolor]').forEach(b=>b.onclick=()=>{const i=+b.dataset.tcolor;const ci=COLORS.indexOf(pjTeams[i].color);pjTeams[i].color=COLORS[(ci+1)%COLORS.length];renderPjTeams();});
+  $('#pj_teams').querySelectorAll('[data-tcolor]').forEach(b=>b.onclick=()=>{   // 使用中の色は飛ばして次の空き色へ
+    const i=+b.dataset.tcolor; const used=pjUsedColors(); used.delete(pjTeams[i].color);
+    let ci=COLORS.indexOf(pjTeams[i].color);
+    for(let n=0;n<COLORS.length;n++){ ci=(ci+1)%COLORS.length; if(!used.has(COLORS[ci])) break; }
+    pjTeams[i].color=COLORS[ci]; renderPjTeams();});
   $('#pj_teams').querySelectorAll('[data-tmem]').forEach(b=>b.onclick=()=>{const i=+b.dataset.tmem;pjTeamOpen=pjTeamOpen===i?-1:i;renderPjTeams();});
   $('#pj_teams').querySelectorAll('[data-tpick] button').forEach(b=>b.onclick=()=>{
     const i=+b.closest('[data-tpick]').dataset.tpick, nm=b.dataset.tm, arr=pjTeams[i].members=pjTeams[i].members||[];
@@ -1391,7 +1410,7 @@ function renderPjTeams(){
     $('#pj_teams').querySelector(`[data-tmem="${i}"]`).textContent=arr.length+'人';
   });
 }
-$('#pj_addteam').onclick=()=>{ pjTeams.push({name:'',color:COLORS[pjTeams.length%COLORS.length],members:[]}); pjTeamOpen=pjTeams.length-1; renderPjTeams(); };
+$('#pj_addteam').onclick=()=>{ const u=pjUsedColors(); const c=COLORS.find(x=>!u.has(x))||COLORS[pjTeams.length%COLORS.length]; pjTeams.push({name:'',color:c,members:[]}); pjTeamOpen=pjTeams.length-1; renderPjTeams(); };
 $('#pjNo').onclick=()=>$('#pjsheet').hidden=true;
 $('#pjsheet').onclick=e=>{if(e.target.id==='pjsheet')$('#pjsheet').hidden=true};
 $('#pjOk').onclick=()=>{
@@ -1578,6 +1597,8 @@ async function geminiModel(){
   return 'gemini-flash-latest';
 }
 async function aiGenerate(parts){
+  // 共有モードではGAS経由で呼ぶ＝APIキーはサーバの中だけ（端末に配らないので抜き取り不可能）
+  if(CFG.url){ const r=await apiPost({action:'ai',parts}); return r.text||''; }
   for(let att=0;att<2;att++){
     const model=await geminiModel();
     const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
@@ -1594,48 +1615,63 @@ async function aiGenerate(parts){
     throw new Error(msg);
   }
 }
-/* AIの回答から「予定追加の提案」ブロックを取り出す */
-let _aiAdds=[];
+/* AIの回答から「予定の追加・削除の提案」ブロックを取り出す */
+let _aiAdds=[],_aiDels=[];
 function aiExtractAdds(txt){
   const m=String(txt||'').match(/```json\s*([\s\S]*?)```/);
-  if(!m) return {clean:txt,adds:[]};
-  let adds=[]; try{ const o=JSON.parse(m[1]); adds=Array.isArray(o.add)?o.add:[]; }catch(e){}
+  if(!m) return {clean:txt,adds:[],dels:[]};
+  let adds=[],dels=[]; try{ const o=JSON.parse(m[1]); adds=Array.isArray(o.add)?o.add:[]; dels=Array.isArray(o.del)?o.del:[]; }catch(e){}
   adds=adds.filter(a=>a&&a.title&&/^\d{4}-\d{2}-\d{2}$/.test(a.date||''))
     .map(a=>({type:a.type==='task'?'task':'event',title:String(a.title).slice(0,100),date:a.date,
       time:/^\d{2}:\d{2}$/.test(a.time||'')?a.time:'',endTime:/^\d{2}:\d{2}$/.test(a.endTime||'')?a.endTime:''}));
-  return {clean:String(txt).replace(m[0],'').trim(), adds};
+  dels=dels.filter(d=>d&&d.title&&/^\d{4}-\d{2}-\d{2}$/.test(d.date||'')).map(d=>({title:String(d.title).slice(0,100),date:d.date}));
+  return {clean:String(txt).replace(m[0],'').trim(), adds, dels};
 }
 async function askAI(){
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
-  if(!CFG.geminiKey){ toast('設定でGemini APIキーを入れてください'); openCfg(); return; }
+  if(!CFG.url&&!CFG.geminiKey){ toast('設定でGemini APIキーを入れてください'); openCfg(); return; }   // 共有モードはサーバのキーで全員使える
   const out=$('#ai_out'); out.hidden=false; out.classList.add('loading'); out.textContent='考えています…';
-  $('#ai_addwrap').hidden=true; _aiAdds=[];
+  $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[];
   const prompt=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n`
-    +`もしユーザーが予定・タスクの追加を頼んでいる場合は、回答文の最後に次の形式のブロックを1つだけ付けてください（追加の依頼でなければ絶対に付けないこと）：\n`
-    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}]}\n```\n'
-    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数日・複数件はaddの配列に全部入れる。\n\n${buildAIContext()}\n\n【質問】${q}`;
+    +`もしユーザーが予定・タスクの追加や削除を頼んでいる場合は、回答文の最後に次の形式のブロックを1つだけ付けてください（依頼でなければ絶対に付けないこと）：\n`
+    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}],"del":[{"title":"会議","date":"YYYY-MM-DD"}]}\n```\n'
+    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数件は配列に全部入れる。delは削除で、上のデータにある予定のタイトルと日付を正確にそのまま書く。追加だけならdelは省略、削除だけならaddは省略。\n\n${buildAIContext()}\n\n【質問】${q}`;
   try{
     const raw=await aiGenerate([{text:prompt}]);
-    const {clean,adds}=aiExtractAdds(raw);
-    out.classList.remove('loading'); out.textContent=clean||(adds.length?'予定の追加を提案します。':'（回答が空でした）');
-    if(adds.length){ _aiAdds=adds; $('#ai_addbtn').textContent=`📅 この内容で${adds.length}件追加する`; $('#ai_addwrap').hidden=false; }
+    const {clean,adds,dels}=aiExtractAdds(raw);
+    out.classList.remove('loading'); out.textContent=clean||((adds.length||dels.length)?'予定の変更を提案します。':'（回答が空でした）');
+    if(adds.length||dels.length){
+      _aiAdds=adds; _aiDels=dels;
+      $('#ai_addbtn').textContent='📅 '+[adds.length?`${adds.length}件追加`:'',dels.length?`${dels.length}件削除`:''].filter(Boolean).join('・')+'を実行する';
+      $('#ai_addwrap').hidden=false;
+    }
   }catch(e){ out.classList.remove('loading'); out.textContent='エラー: '+e.message; }
 }
 $('#ai_addbtn').onclick=()=>{
-  if(!_aiAdds.length) return;
-  const lines=_aiAdds.map(a=>`・${a.date}${a.time?' '+a.time+(a.endTime?'〜'+a.endTime:''):''} ${a.title}${a.type==='task'?'（やること）':''}`).join('\n');
-  if(!confirm(`次の${_aiAdds.length}件を追加します。よろしいですか？\n\n${lines}`)) return;
+  if(!_aiAdds.length&&!_aiDels.length) return;
+  const lines=[
+    ..._aiAdds.map(a=>`＋ ${a.date}${a.time?' '+a.time+(a.endTime?'〜'+a.endTime:''):''} ${a.title}${a.type==='task'?'（やること）':''}`),
+    ..._aiDels.map(d=>`－ ${d.date} ${d.title}（削除）`)
+  ].join('\n');
+  if(!confirm(`次の内容を実行します。よろしいですか？\n\n${lines}`)) return;
   const ids=[],t0=now();
   _aiAdds.forEach((a,ix)=>{
     if(liveItems().some(x=>x.type===a.type&&x.title===a.title&&x.date===a.date&&(x.time||'')===(a.time||''))) return; // 二重登録防止
     const id='i'+(t0+ix);
-    DB.items.push({id,type:a.type,pj:'',other:'',title:a.title,date:a.date,time:a.time,endTime:a.endTime,who:[],team:'',visibility:'all',
-      important:false,note:'',done:false,doneAt:0,rep:'none',days:[],until:'',remind:'',comments:[],createdBy:ME,updatedAt:t0+ix,deleted:false});
+    DB.items.push({id,type:a.type,pj:'',other:'',title:a.title,date:a.date,time:a.time,endTime:a.endTime,who:[],team:'',teamPj:'',visibility:'all',
+      important:false,note:'',done:false,doneAt:0,rep:'none',days:[],until:'',remind:'',comments:[],skip:[],notes:{},createdBy:ME,updatedAt:t0+ix,deleted:false});
     ids.push(id);
   });
-  $('#ai_addwrap').hidden=true; _aiAdds=[];
-  if(!ids.length){ toast('すべて登録済みでした'); return; }
-  commit(ids); toast(`${ids.length}件を追加しました`);
+  let delCnt=0;
+  _aiDels.forEach(dl=>{
+    let x=liveItems().find(x=>x.title===dl.title&&x.date===dl.date);
+    if(x){ x.deleted=true; x.updatedAt=now(); ids.push(x.id); delCnt++; return; }
+    x=liveItems().find(x=>x.title===dl.title&&x.type==='event'&&occursOn(x,dl.date));   // くり返しの1回ならその回だけ消す
+    if(x){ x.skip=Array.isArray(x.skip)?x.skip:[]; if(!x.skip.includes(dl.date))x.skip.push(dl.date); x.updatedAt=now(); ids.push(x.id); delCnt++; }
+  });
+  $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[];
+  if(!ids.length){ toast('変更はありませんでした（登録済み／見つからず）'); return; }
+  commit(ids); toast(`実行しました（追加${ids.length-delCnt}件・削除${delCnt}件）`);
 };
 
 /* ============================================================ 設定 */
@@ -1893,7 +1929,7 @@ $('#bkNo').onclick=()=>$('#bulksheet').hidden=true;
 $('#bulksheet').onclick=e=>{if(e.target.id==='bulksheet')$('#bulksheet').hidden=true};
 /* PDF → AIで日付・内容を読み取って下の欄に入れる */
 $('#bk_pdf').onclick=()=>{
-  if(!CFG.geminiKey){ toast('PDF読み取りにはAIキーが必要です。設定→🔑管理者メニュー→AI（Gemini APIキー）に入れてください'); return; }
+  if(!CFG.url&&!CFG.geminiKey){ toast('PDF読み取りにはAIキーが必要です。設定→🔑管理者メニュー→AI（Gemini APIキー）に入れてください'); return; }
   $('#bk_pdffile').click();
 };
 $('#bk_pdffile').onchange=e=>{
@@ -1953,7 +1989,7 @@ function parseBulk(){
     let time='',endTime='';
     const tm=rest.match(new RegExp('^('+TIME+')(?:\\s*(?:[〜~～-]|から)\\s*('+TIME+'))?\\s*の?\\s*(.*)$'));
     if(tm&&parseT(tm[1])){ time=parseT(tm[1]); endTime=tm[2]?(parseT(tm[2])||''):''; rest=tm[3]||''; }
-    const title=rest.trim();
+    const title=rest.replace(/^[：:、。・\-\s]+/,'').trim();   // 「7/14：内容」の先頭の：などを除去
     if(!title)return;
     let k=d1,n=0;
     do{ if(!skip.has(k)) out.push({date:k,time,endTime,title}); k=nextDay(k); n++; }while(d2&&k<=d2&&n<400);
@@ -2064,7 +2100,7 @@ function applyMeta(remote){
   if(remote.claims){ CLAIMS=remote.claims; LS.set('claims',CLAIMS); }
   if(remote.pinset){ PINSET=remote.pinset; LS.set('pinset',PINSET); } // どの名前に暗証番号があるか（番号自体は来ない）
   if(remote.goals){ GOALS=remote.goals; LS.set('goals',GOALS); }      // 目標（管理者が設定）
-  if(typeof remote.gemkey==='string'&&remote.gemkey&&remote.gemkey!==CFG.geminiKey){ CFG.geminiKey=remote.gemkey; LS.set('cfg',CFG); } // AIキーは全員に共有（管理者が設定）
+  // AIキーは配らない（サーバの中だけ・action=ai経由で全員使える＝抜き取り不可能）
   // 管理者パスは同期しない（サーバ側で照合。応答に載せると誰でも見えてしまうため）
   if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
   // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
@@ -2129,7 +2165,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='28'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='29'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
@@ -2154,7 +2190,13 @@ setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); });
 window.addEventListener('online',syncNow);
 window.addEventListener('focus',()=>{ if(CFG.url)syncNow(); });
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').then(r=>{ try{r.update();}catch(e){} }).catch(()=>{}); }
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(r=>{ try{r.update();}catch(e){} }).catch(()=>{});
+  // 旧URL（/zemi-daicho/）時代の亡霊Service Workerを掃除（古い画面を配信し続けてデータ混同のもとになる）
+  if(location.hostname.endsWith('github.io')){
+    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>{ if(!r.scope.includes('/zemi-calendar')) r.unregister().catch(()=>{}); })).catch(()=>{});
+  }
+}
 </script>
 </body>
 </html>
