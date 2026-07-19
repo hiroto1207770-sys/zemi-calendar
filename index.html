@@ -523,8 +523,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <textarea id="m_text" placeholder="例：数字の裏にある『なぜ』を必ず一言そえる"></textarea>
   <div class="seg" id="m_cat"></div>
   <div class="acts" style="margin-top:6px"><button class="no" id="m_cancel" hidden style="flex:0 0 auto">やめる</button><button class="go" id="m_add" style="flex:1">＋ 追加する</button></div>
-  <div class="seg" id="m_filter" style="margin-top:14px"></div>
-  <div id="m_list"></div>
+  <div id="m_list" style="margin-top:14px"></div>
   <div class="acts" style="margin-top:10px"><button class="no" id="mClose">とじる</button></div>
 </div></div>
 
@@ -567,10 +566,10 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="sec" style="margin-top:14px">プロフィール</div>
   <label>あなた（本名を選ぶ）</label>
   <select id="c_me"></select>
-  <p class="help" id="c_mehelp">一度選ぶと変更できません。自分の名前を選んでください。</p>
+  <p class="help" id="c_mehelp">自分の名前を選んでください。</p>
   <label>カレンダーに表示する名前（表示名）</label>
   <input id="c_disp" placeholder="例）ひろと（空なら本名がそのまま出ます）">
-  <p class="help" id="c_disphelp">一度決めると変更できません（管理者のみ変更可）。予定の担当などに、この名前で表示されます。</p>
+  <p class="help" id="c_disphelp">予定の担当などに、この名前で表示されます。</p>
   <label>表示テーマ</label>
   <div class="seg" id="c_theme">
     <button type="button" data-t="light">ライト</button>
@@ -603,7 +602,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 
   <div class="sec" style="margin-top:22px">メンバー</div>
   <div id="c_memlist_ro"></div>
-  <p class="help">名簿は全員が見られます。追加・削除・誕生日の編集は管理者だけができます。</p>
+  <p class="help">名簿は全員が見られます。</p>
   <div class="acts" style="margin-top:8px"><button type="button" class="no" id="c_adminBtn" style="flex:1">🔑 管理者メニュー</button></div>
 
   <div id="adminWrap" hidden>
@@ -626,6 +625,9 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <input id="c_goal1" placeholder="水野ゼミとしての目標">
     <input id="c_goal2" placeholder="9期生としての目標" style="margin-top:6px">
     <div class="acts" style="margin-top:6px"><button type="button" class="no" id="c_goalsave" style="flex:1">目標を保存</button></div>
+    <label>データの復元（新しい端末でプロジェクトが出ないとき）</label>
+    <button type="button" class="no" id="c_restore" style="width:100%">この端末のプロジェクト・予定を全員に送る</button>
+    <p class="help">プロジェクトが正しく表示されている端末で押すと、その内容をサーバに送り直して全員に反映します。新しい端末で「プロジェクト＆係」が空のときの復元用です。</p>
     <label>管理者パスワードを変更</label>
     <div class="row"><input id="c_admnew" type="text" inputmode="numeric" placeholder="新しい管理者パスワード"><button type="button" class="no" id="c_admchg" style="flex:0 0 auto;padding:0 16px">変更</button></div>
     <p class="help">変更には今のパスワードが必要です。<b>忘れたとき</b>は、Googleスプレッドシートの「meta」シートで <b>key が adminpass</b> の行を削除すると、次の同期で <b>1270</b> に戻ります。</p>
@@ -634,11 +636,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <p class="help">機種変更では<b>不要</b>です（新しい端末で自分の名前＋パスを入れるだけ）。別の人に管理者を代わってもらうときだけ押してください。押すと未登録に戻り、次にパスを入れた人が管理者になります。</p>
   </div>
 
-  <div class="sec" style="margin-top:22px">外観・データ</div>
-  <label>ロゴ画像（左上のマーク）</label>
-  <div class="row"><button type="button" class="no" id="c_logo" style="flex:1">画像を選ぶ</button><button type="button" class="no" id="c_logodel" style="flex:0 0 auto;padding:0 16px">消す</button></div>
-  <input type="file" id="c_logofile" accept="image/*" hidden>
-  <div class="logoprev" id="c_logoprev"></div>
+  <div class="sec" style="margin-top:22px">まとめて追加・データ</div>
   <label>年間予定のまとめて追加</label>
   <button type="button" class="no" id="c_bulk" style="width:100%">PDF・テキストから取り込む</button>
   <label>バックアップ</label>
@@ -665,8 +663,10 @@ const now = () => Date.now();
 // 初期名簿は本名（サーバの名簿が正だが、初回起動・同期前でも正しい名前が出るように）
 const MEMBERS0 = ['田中大翔','根津柚花','村山美織梨','大野萌衣','上野さくら','東久保結衣','鈴木彩花','市岡佑梨菜','大塚莉乃','泉谷宗汰','椙山真衣','菅原月碧','会田葵'].map(n=>({name:n}));
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
-const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+const DEFAULT_KEY='9th26131';   // ゼミ共通の合言葉。端末に埋め込んで「開くだけで同期」に（新しい端末でデータが出ない問題の解消）
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:DEFAULT_KEY, logo:'', theme:'light', geminiKey:'', geminiModel:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 if(!CFG.url) CFG.url=DEFAULT_URL;
+if(!CFG.appKey) CFG.appKey=DEFAULT_KEY;   // 旧端末で空になっていても既定の合言葉で必ず接続できるように
 // 番号つきの旧モデルは次々に廃止される（limit:0 / no longer available エラー）→「自動選択」へ移行
 if(/^gemini-(2\.5|2\.0|1\.5)/.test(CFG.geminiModel||'')){ CFG.geminiModel=''; LS.set('cfg',CFG); }
 // 開発初期のひらがな名簿が残っている端末は本名リストへ自動移行（正式な名簿は次の同期でサーバから届く）
@@ -679,6 +679,7 @@ LS.set('cfg',CFG);
 let ME = LS.get('me', '');
 let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者パスワードで解除）
 let ADMIN_PASS = (CFG.adminPass||'1270');  // 管理者パスワード（サーバのmetaで全員共有・変更可。既定1270）
+const ADMIN_DEFAULT = '田中大翔';           // 管理者メニューを出す本名（この人が選ばれたときだけ表示。ほかの人には管理者の存在を見せない）
 let ADMIN_NAME = (CFG.adminName||'');       // 管理者にできる本名（metaで共有）。空=未登録（最初にパス解錠した人が自動登録）
 let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
 let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
@@ -747,7 +748,7 @@ function seed(){
 function migrate(db){
   if(!db||!db.projects) db=seed();
   const t=now();
-  db.projects=(db.projects||[]).map((p,pi)=>{
+  db.projects=(db.projects||[]).filter(p=>p&&p.id&&p.id!=='undefined'&&p.id!=='null').map((p,pi)=>{   // id無し/壊れたプロジェクト行は除外（空欄の項目が出る不具合の防止）
     let teams=Array.isArray(p.teams)?p.teams:[];
     teams=teams.map((tm,i)=> typeof tm==='string' ? {name:tm,color:COLORS[i%COLORS.length],members:[]} : {name:tm.name||'',color:tm.color||COLORS[i%COLORS.length],members:Array.isArray(tm.members)?tm.members:[]});
     return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams,members:Array.isArray(p.members)?p.members:[]};
@@ -1544,14 +1545,30 @@ $('#pjDel').onclick=()=>{
 $('#searchBtn').onclick=()=>{ $('#s_q').value=''; $('#s_res').innerHTML=''; $('#search').hidden=false; setTimeout(()=>$('#s_q').focus(),50); };
 $('#sClose').onclick=()=>$('#search').hidden=true;
 $('#search').onclick=e=>{if(e.target.id==='search')$('#search').hidden=true};
+/* 検索の“だいたい一致”：大文字小文字・全角半角・ひらがな/カタカナ・記号(!など)を吸収し、
+   カタカナの読みで英語名も拾う（例：「ブランコ」で「BranCo!」がヒット）。 */
+const _KANA={ア:'a',イ:'i',ウ:'u',エ:'e',オ:'o',カ:'ka',キ:'ki',ク:'ku',ケ:'ke',コ:'ko',ガ:'ga',ギ:'gi',グ:'gu',ゲ:'ge',ゴ:'go',サ:'sa',シ:'shi',ス:'su',セ:'se',ソ:'so',ザ:'za',ジ:'ji',ズ:'zu',ゼ:'ze',ゾ:'zo',タ:'ta',チ:'chi',ツ:'tsu',テ:'te',ト:'to',ダ:'da',ヂ:'ji',ヅ:'zu',デ:'de',ド:'do',ナ:'na',ニ:'ni',ヌ:'nu',ネ:'ne',ノ:'no',ハ:'ha',ヒ:'hi',フ:'fu',ヘ:'he',ホ:'ho',バ:'ba',ビ:'bi',ブ:'bu',ベ:'be',ボ:'bo',パ:'pa',ピ:'pi',プ:'pu',ペ:'pe',ポ:'po',マ:'ma',ミ:'mi',ム:'mu',メ:'me',モ:'mo',ヤ:'ya',ユ:'yu',ヨ:'yo',ラ:'ra',リ:'ri',ル:'ru',レ:'re',ロ:'ro',ワ:'wa',ヲ:'o',ン:'n',ヴ:'vu',ァ:'a',ィ:'i',ゥ:'u',ェ:'e',ォ:'o',ャ:'ya',ュ:'yu',ョ:'yo',ー:''};
+function _norm(s){ return String(s||'').normalize('NFKC').toLowerCase()
+  .replace(/[ぁ-ん]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60))   // ひらがな→カタカナ
+  .replace(/[^0-9a-z゠-ヿ一-鿿]/g,''); }              // 記号・空白を落とす
+function _romaji(s){ let o=''; for(const ch of s){ if(ch==='ッ')continue; o+=(_KANA[ch]!==undefined)?_KANA[ch]:( /[ァ-ヺ]/.test(ch)?'':ch ); } return o; }
+const _skel=x=>x.replace(/[aiueo]/g,'');
+function searchMatch(rawQ,target){
+  const q=_norm(rawQ), t=_norm(target); if(!q) return false;
+  if(t.includes(q)) return true;
+  const qr=_romaji(q), tr=_romaji(t).replace(/c/g,'k');   // 英名側もローマ字寄せ（co→ko）
+  if(qr.length>=2 && tr.includes(qr)) return true;
+  if(_skel(qr).length>=3 && _skel(tr).includes(_skel(qr))) return true;   // 母音を省いた骨格一致（読み⇔英名）
+  return false;
+}
 $('#s_q').addEventListener('input',()=>{
-  const q=$('#s_q').value.trim().toLowerCase();
-  if(!q){$('#s_res').innerHTML='';return;}
+  const raw=$('#s_q').value.trim();
+  if(!raw){$('#s_res').innerHTML='';return;}
   const hits=liveItems().filter(i=>{
     if(!canSee(i))return false;
-    if(i.type==='memo') return [i.title,i.memoCat].join(' ').toLowerCase().includes(q);
+    if(i.type==='memo') return searchMatch(raw,[i.title,i.memoCat].join(' '));
     const p=catOf(i);
-    return [i.title,i.note,i.team,i.other,p.name,(i.who||[]).join(' ')].join(' ').toLowerCase().includes(q);
+    return searchMatch(raw,[i.title,i.note,i.team,i.other,p.name,(i.who||[]).join(' ')].join(' '));
   }).sort((a,b)=>(b.type==='memo'?'':a.date).localeCompare(b.type==='memo'?'':b.date)).slice(0,40);
   $('#s_res').innerHTML=hits.length?hits.map(i=>{
     if(i.type==='memo'){
@@ -1563,7 +1580,7 @@ $('#s_q').addEventListener('input',()=>{
       <div class="rm"><i style="background:${p.color}"></i>${esc(p.name)}${i.team?' / '+esc(i.team):''} ・ ${esc(i.date.slice(5).replace('-','/'))}</div></div></div>`;
   }).join(''):`<div class="empty">見つかりませんでした</div>`;
   $('#s_res').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{$('#search').hidden=true;openSheet(b.dataset.open);});
-  $('#s_res').querySelectorAll('[data-memo]').forEach(b=>b.onclick=()=>{$('#search').hidden=true;memoFilter=b.dataset.memo;openMemo();});
+  $('#s_res').querySelectorAll('[data-memo]').forEach(b=>b.onclick=()=>{$('#search').hidden=true;openMemo();});
 });
 
 /* ============================================================ メモ（ゼミで教わった大切なこと・全員共有） */
@@ -1574,7 +1591,7 @@ const MEMO_CATS=[
   {name:'写メール',color:'#b06b57'}
 ];
 const memoColor=n=>{const c=MEMO_CATS.find(x=>x.name===n);return c?c.color:'#8a8a8a';};
-let memoCat='ゼミ',memoFilter='all',memoEditId=null;
+let memoCat='ゼミ',memoEditId=null;
 const liveMemos=()=>liveItems().filter(i=>i.type==='memo').sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
 function memoResetForm(){ memoEditId=null; $('#m_text').value=''; $('#m_add').textContent='＋ 追加する'; $('#m_cancel').hidden=true; }
 function openMemo(){
@@ -1587,11 +1604,8 @@ function openMemo(){
   setTimeout(()=>$('#m_text').focus(),50);
 }
 function renderMemoList(){
-  $('#m_filter').innerHTML=`<button type="button" data-mf="all" class="${memoFilter==='all'?'on':''}">すべて</button>`
-    +MEMO_CATS.map(c=>`<button type="button" data-mf="${esc(c.name)}" class="${memoFilter===c.name?'on':''}">${esc(c.name)}</button>`).join('');
-  $('#m_filter').querySelectorAll('[data-mf]').forEach(b=>b.onclick=()=>{ memoFilter=b.dataset.mf; renderMemoList(); });
   const all=liveMemos();
-  const cats=memoFilter==='all'?MEMO_CATS.map(c=>c.name):[memoFilter];
+  const cats=MEMO_CATS.map(c=>c.name);   // 分類ごとに見出しをつけて全件表示（絞り込み欄は追加時の分類選択に一本化）
   let h='';
   cats.forEach(cn=>{
     const list=all.filter(m=>(m.memoCat||'ゼミ')===cn);
@@ -1635,7 +1649,7 @@ $('#m_add').onclick=()=>{
       skip:[],notes:{},done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,updatedAt:now()});
   }
   const wasEdit=!!memoEditId;
-  memoFilter=memoCat; memoResetForm(); renderMemoList(); commit([id]); toast(wasEdit?'メモを更新しました':'メモを追加しました');
+  memoResetForm(); renderMemoList(); commit([id]); toast(wasEdit?'メモを更新しました':'メモを追加しました');
 };
 $('#m_cancel').onclick=()=>{ memoResetForm(); };
 $('#mClose').onclick=()=>$('#memosheet').hidden=true;
@@ -1915,7 +1929,8 @@ async function checkAdminPass(p){
   return p===ADMIN_PASS;
 }
 function paintAdmin(){
-  const eligible = (!CFG.url && !ME) || ME===ADMIN_NAME || (ADMIN_NAME==='' && !!ME); // この端末で管理者になれる人か
+  // 管理者メニューは「田中大翔」を選んだ端末だけに表示（初回の名前登録中や他の人には一切出さない）
+  const eligible = !!ME && (ME===ADMIN_NAME || (ADMIN_NAME==='' && ME===ADMIN_DEFAULT));
   const on = isAdmin();
   $('#adminWrap').hidden = !on;
   const b=$('#c_adminBtn'); if(b) b.style.display = on ? 'none' : (eligible ? '' : 'none');
@@ -1962,6 +1977,20 @@ $('#c_goalsave').onclick=async()=>{
   else toast('目標を保存しました');
   render();
 };
+$('#c_restore').onclick=async()=>{
+  if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
+  if(!CFG.url){ toast('共有の設定が必要です'); return; }
+  const projs=DB.projects.filter(p=>p.id&&p.id!=='undefined'&&p.id!=='null');
+  if(!projs.length){ toast('この端末にもプロジェクトがありません。正しく表示されている端末で押してください'); return; }
+  if(!confirm(`この端末のプロジェクト（${projs.length}件）と予定・やること（${DB.items.length}件）をサーバへ送り、全員に反映します。よろしいですか？`)) return;
+  projs.forEach(p=>{ p.updatedAt=now(); });   // プロジェクトは確実に復活させる（サーバに無い/古い状態に必ず勝つ）
+  LS.set('db',DB);
+  const ids=[...projs.map(p=>p.id),...DB.items.map(i=>i.id)];
+  ids.forEach(id=>{ if(!pending.includes(id)) pending.push(id); });
+  toast('送信しています…');
+  await flush();
+  toast(syncState==='ok'?`送信しました（プロジェクト${projs.length}件・項目${DB.items.length}件）。他の端末は「🔄いま同期」で反映されます`:'送信に失敗しました。通信を確認してもう一度お試しください');
+};
 $('#c_adminhandoff').onclick=async()=>{
   if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
   if(!confirm('管理者の登録を解除します。\n（機種変更では不要です）\n次に管理者パスを入れた人が新しい管理者になります。よろしいですか？')) return;
@@ -1978,12 +2007,10 @@ function parseBd(v){ // 「7/16」「7-16」→ 'MM-DD'。空・不正は ''
 }
 const bdDisp=b=>b?`${+b.slice(0,2)}/${+b.slice(3)}`:'';
 function renderMemList(){
-  $('#c_memlist').innerHTML=memEdit.map((m,i)=>`<div class="memrow" style="flex-wrap:wrap"><div class="mn"><b>${esc(m.name)}</b></div>
+  $('#c_memlist').innerHTML=memEdit.map((m,i)=>`<div class="memrow"><div class="mn"><b>${esc(m.name)}</b></div>
     <input data-mbd="${i}" value="${esc(bdDisp(m.birthday))}" placeholder="🎂 7/16" style="flex:0 0 86px;padding:7px 8px;font-size:12px">
     <button data-munlock="${i}" title="この人の端末で名前を選び直せるようにする">🔓</button>
-    <button class="mdel" data-mdel="${i}">削除</button>
-    <input data-mmail="${i}" type="email" value="${esc(m.email||'')}" placeholder="📧 毎朝メール通知の宛先（任意）" style="flex:1 0 100%;padding:7px 8px;font-size:12px;margin-top:4px"></div>`).join('')||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
-  $('#c_memlist').querySelectorAll('[data-mmail]').forEach(inp=>inp.onchange=()=>{ memEdit[+inp.dataset.mmail].email=inp.value.trim(); });
+    <button class="mdel" data-mdel="${i}">削除</button></div>`).join('')||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
   $('#c_memlist').querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{const i=+b.dataset.mdel;if(!confirm(`「${memEdit[i].name}」を削除しますか？\n担当・チームからも外れます。`))return;memEdit.splice(i,1);renderMemList();refreshMeOptions();});
   $('#c_memlist').querySelectorAll('[data-mbd]').forEach(inp=>inp.onchange=()=>{
     const i=+inp.dataset.mbd, bd=parseBd(inp.value);
@@ -2008,22 +2035,8 @@ $('#c_syncnow').onclick=async()=>{
   _lastSync=new Date().toLocaleTimeString();
   $('#c_syncinfo').textContent=`完了 ${_lastSync}（アプリ v${APP_V}・${st}）`;
 };
-/* ロゴ画像（この端末に保存・自動縮小） */
-function applyLogo(){ const img=$('#brandLogo'); if(!img)return; if(CFG.logo){img.src=CFG.logo;img.style.display='block';img.nextElementSibling.style.display='none';} }
-function renderLogoBtns(){ $('#c_logo').style.display=CFG.logo?'none':''; $('#c_logodel').style.display=CFG.logo?'':'none'; $('#c_logoprev').innerHTML=CFG.logo?`<img src="${CFG.logo}"><span style="font-size:12px;color:var(--muted)">現在のマーク</span>`:''; }
-$('#c_logo').onclick=()=>$('#c_logofile').click();
-$('#c_logodel').onclick=()=>{ CFG.logo=''; LS.set('cfg',CFG); const img=$('#brandLogo'); img.src='logo.png'; renderLogoBtns(); toast('ロゴを消しました'); };
-$('#c_logofile').onchange=e=>{
-  const f=e.target.files[0]; if(!f)return;
-  const rd=new FileReader();
-  rd.onload=()=>{ const im=new Image(); im.onload=()=>{
-    const max=256, sc=Math.min(1,max/Math.max(im.width,im.height));
-    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*sc)); c.height=Math.max(1,Math.round(im.height*sc));
-    c.getContext('2d').drawImage(im,0,0,c.width,c.height);
-    CFG.logo=c.toDataURL('image/png'); LS.set('cfg',CFG); applyLogo(); renderLogoBtns(); toast('ロゴを設定しました');
-  }; im.onerror=()=>toast('画像を読み込めませんでした'); im.src=rd.result; };
-  rd.readAsDataURL(f); $('#c_logofile').value='';
-};
+/* ロゴは水野ゼミのマーク（logo.png）で固定。差し替えUIは廃止。 */
+function applyLogo(){ const img=$('#brandLogo'); if(!img)return; img.src='logo.png'; img.style.display='block'; if(img.nextElementSibling) img.nextElementSibling.style.display='none'; }
 function paintTheme(){ document.querySelectorAll('#c_theme button').forEach(b=>b.classList.toggle('on',b.dataset.t===(CFG.theme||'light'))); }
 document.querySelectorAll('#c_theme button').forEach(b=>b.onclick=()=>{ CFG.theme=b.dataset.t; LS.set('cfg',CFG); applyTheme(); paintTheme(); });
 /* ICSリンクは 設定シート内の入力からその場で組み立てる（名前を選んだ瞬間に表示される） */
@@ -2047,10 +2060,12 @@ function openCfg(){
   $('#c_disp').value=ME?(DISPLAY[ME]||''):'';
   $('#c_disp').disabled=dispLocked;
   if(nameLocked||dispLocked){
-    $('#c_mehelp').innerHTML=`「${esc(ME)}」で利用中　<button type="button" id="c_meunlock" style="background:none;border:none;color:#a9884f;text-decoration:underline;cursor:pointer;font-size:12px;padding:0">変更する（管理者）</button>`;
-    const b=$('#c_meunlock'); if(b) b.onclick=async()=>{ const p=prompt('変更するには管理者パスワードを入力してください'); if(p===null)return; if(await checkAdminPass(p)){ _adminUnlocked=true; $('#c_me').disabled=false; $('#c_disp').disabled=false; $('#c_mehelp').textContent='本名・表示名を選び直せます（保存で確定）。'; } else { toast('パスワードが違います'); } };
+    // 変更用ボタンは「田中大翔」の端末にだけ出す（ほかの人には管理者の存在を見せない）。
+    const canChange = ME===ADMIN_NAME || (ADMIN_NAME==='' && ME===ADMIN_DEFAULT);
+    $('#c_mehelp').innerHTML=`「${esc(ME)}」で利用中`+(canChange?`　<button type="button" id="c_meunlock" style="background:none;border:none;color:#a9884f;text-decoration:underline;cursor:pointer;font-size:12px;padding:0">変更する</button>`:'');
+    const b=$('#c_meunlock'); if(b) b.onclick=async()=>{ const p=prompt('パスワードを入力してください'); if(p===null)return; if(await checkAdminPass(p)){ _adminUnlocked=true; $('#c_me').disabled=false; $('#c_disp').disabled=false; $('#c_mehelp').textContent='名前を選び直せます（保存で確定）。'; } else { toast('パスワードが違います'); } };
   } else {
-    $('#c_mehelp').textContent='一度選ぶと変更できません。自分の名前を選んでください。';
+    $('#c_mehelp').textContent='自分の名前を選んでください。';
   }
   // 名簿は全員に表示。管理メニュー（追加・削除・AIキー・パス変更）は管理者パスで解錠したときだけ。
   renderMemListRO(); paintAdmin();
@@ -2062,7 +2077,7 @@ function openCfg(){
   $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
   refreshIcsField();
   renderPushUI();
-  renderLogoBtns(); $('#cfg').hidden=false;
+  $('#cfg').hidden=false;
 }
 /* バックアップ：書き出し／読み込み */
 $('#c_export').onclick=()=>{
@@ -2135,7 +2150,7 @@ $('#cfgOk').onclick=async()=>{
 };
 
 /* ============================================================ まとめて追加（年間予定など） */
-$('#c_bulk').onclick=openBulk;
+$('#c_bulk').onclick=()=>{ $('#cfg').hidden=true; openBulk(); };   // 設定を閉じてから開く（設定の裏に隠れて見えなかった不具合の修正）
 function openBulk(){
   $('#bk_pj').innerHTML=activeProjects().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')+`<option value="__other__">その他（自由入力）</option>`;
   $('#bk_pj').onchange=()=>{ $('#bk_other').hidden=$('#bk_pj').value!=='__other__'; };
@@ -2390,7 +2405,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='31'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='34'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
