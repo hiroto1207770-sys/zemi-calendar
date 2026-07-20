@@ -581,9 +581,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="sec" style="margin-top:22px">共有と同期</div>
   <div class="acts" style="margin:4px 0 8px"><button class="no" id="c_syncnow" type="button" style="flex:1">🔄 いま同期する</button></div>
   <p class="help" id="c_syncinfo"></p>
-  <label>つなぎ先 URL</label>
-  <input id="c_url" placeholder="https://script.google.com/macros/s/…/exec">
-  <p class="help">空のままなら、この端末だけに保存。URLを入れると全員の端末（何台でも）で同じデータが自動同期されます。表示は各自の設定に合わせて絞り込まれます。</p>
+  <input id="c_url" type="hidden"><!-- つなぎ先URLはDEFAULT_URLで固定運用。編集UIは廃止（面縮小・誤操作防止）。ICSリンク生成にのみ内部利用 -->
   <label style="display:flex;align-items:center;gap:8px">合言葉でロック<input type="checkbox" id="c_keyon" style="width:auto;margin-left:auto"></label>
   <div id="c_keywrap" hidden>
     <input id="c_key" placeholder="全員で同じ合言葉">
@@ -608,19 +606,20 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div id="adminWrap" hidden>
     <div class="sec" style="margin-top:18px">管理者メニュー</div>
     <p class="help" id="c_adminwho"></p>
+    <div id="c_auditWrap" hidden>
+      <label>セキュリティ・データ監査（読み取り専用）</label>
+      <button type="button" class="no" id="c_auditBtn" style="width:100%">🛡 セキュリティ監査レポートを表示</button>
+      <p class="help" id="c_auditHint" style="display:none">この端末はまだ「管理者デバイス」として登録されていません。サーバ更新後に管理者パスワードを入れ直すと自動登録され、監査が使えます。</p>
+      <p class="help">この端末が管理者デバイスとして登録済みのときだけ使えます。データは一切変更しません。</p>
+      <label>警告メールの通知先（未知の端末から管理者アクセスがあった時）</label>
+      <div class="row"><input id="c_admemail" type="email" inputmode="email" placeholder="管理者のGmail"><button type="button" class="no" id="c_admemailsave" style="flex:0 0 auto;padding:0 16px">保存</button></div>
+    </div>
     <label>メンバー（🎂誕生日をカレンダー表示・🔓で名前ロック解除）</label>
     <div id="c_memlist"></div>
     <div class="row" style="margin-top:6px"><input id="c_memadd" placeholder="名前を入力して追加"><button type="button" class="no" id="c_memaddbtn" style="flex:0 0 auto;padding:0 16px">追加</button></div>
-    <label>AI（Gemini APIキー）</label>
-    <input id="c_gkey" placeholder="AIza…（空ならAIオフ）">
-    <p class="help">キーは <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brass-d);font-weight:700">Google AI Studio</a> で無料発行。</p>
-    <label>AIモデル</label>
-    <select id="c_gmodel">
-      <option value="">自動でえらぶ（おすすめ）</option>
-      <option value="gemini-flash-latest">gemini-flash-latest</option>
-      <option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
-    </select>
-    <p class="help">「自動」は、あなたのキーで使える最新のflashモデルを自動で選びます（モデル廃止エラーを回避）。</p>
+    <label>AI（Gemini）の状態</label>
+    <div id="c_aistatus" class="help" style="padding:8px 10px;border-radius:8px;background:var(--card,#fff);border:1px solid var(--line,#e5e2da)">確認中…</div>
+    <p class="help">APIキーは<b>サーバ（GAS）のみ</b>が保持します。設定は管理者がGASのプロジェクト設定 → スクリプトプロパティに <b>GEMINI_KEY</b> を追加してください（このアプリにはキーを入力しません＝端末に鍵を置かない安全設計）。モデルはサーバが自動選択します。</p>
     <label>目標（ホームに表示・全員に共有）</label>
     <input id="c_goal1" placeholder="水野ゼミとしての目標">
     <input id="c_goal2" placeholder="9期生としての目標" style="margin-top:6px">
@@ -651,6 +650,14 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts"><button class="no" id="cfgNo">やめる</button><button class="go" id="cfgOk">保存する</button></div>
 </div></div>
 
+<!-- セキュリティ監査モーダル（管理者専用・読み取り専用） -->
+<div class="sheet" id="auditsheet" hidden><div class="box">
+  <div class="sec" style="margin-top:2px">🛡 セキュリティ監査レポート</div>
+  <p class="help" id="audit_meta"></p>
+  <div id="audit_body"></div>
+  <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
+</div></div>
+
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -662,15 +669,33 @@ const LS = {
 const MEM = {};
 const now = () => Date.now();
 
+/* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
+// localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
+// localStorageが飛んでも自動で復元する。復元は「名簿にある正しい名前」に限る（データ汚染防止のバリデーション）。
+const CK = {
+  set(k,v){ try{ document.cookie = k+'='+encodeURIComponent(v)+';max-age=34560000;path=/;samesite=lax'; }catch(e){} }, // 400日
+  get(k){ try{ const m=document.cookie.match('(?:^|; )'+k.replace(/([.*+?^${}()|[\]\\])/g,'\\$1')+'=([^;]*)'); return m?decodeURIComponent(m[1]):null; }catch(e){ return null; } }
+};
+const IDCK='zemi_id';
+function backupIdentity(){   // 現在の身元情報をCookieへ退避（localStorageと二重化）
+  try{ CK.set(IDCK, JSON.stringify({me:ME,dev:DEV,ml:ME_LOCKED?1:0,mla:LS.get('meLockedAt',0)})); }catch(e){}
+}
+// 管理者デバイスシークレット（タスク6）：初回パス認証時にサーバが発行→この端末のCookie(400日)＋localStorageに固定。
+// 以降はパスワード不要でこのシークレットにより自動デバイス認証。値はサーバのmetaにも保存され二重検証される。
+const ADMSEC_CK='zemi_admsec';
+function adminSecret(){ return CK.get(ADMSEC_CK) || LS.get('admsec','') || ''; }
+function setAdminSecret(s){ if(!s) return; CK.set(ADMSEC_CK, s); LS.set('admsec', s); }
+
 // 初期名簿は本名（サーバの名簿が正だが、初回起動・同期前でも正しい名前が出るように）
 const MEMBERS0 = ['田中大翔','根津柚花','村山美織梨','大野萌衣','上野さくら','東久保結衣','鈴木彩花','市岡佑梨菜','大塚莉乃','泉谷宗汰','椙山真衣','菅原月碧','会田葵'].map(n=>({name:n}));
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
-const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', geminiKey:'', geminiModel:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
-if(!CFG.url) CFG.url=DEFAULT_URL;
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定運用（フロントからの編集・保存を廃止＝プロキシ宛先を固定）
+// 【秘匿情報のGAS集約】フロントはGeminiキー等の秘密を一切持たない。過去に保存された痕跡をlocalStorageから抹消する。
+if(('geminiKey' in CFG)||('geminiModel' in CFG)||('adminPass' in CFG)){ delete CFG.geminiKey; delete CFG.geminiModel; delete CFG.adminPass; LS.set('cfg',CFG); }
 // 合言葉は必須（自動では入れない）。ただし「名前を選んでログイン済みの端末」は一度入れたら記憶し、
 // 名前未設定の端末は毎回入力を求める（＝合言葉を知っていれば閲覧はできるが、開くたびに要入力）。
 // 番号つきの旧モデルは次々に廃止される（limit:0 / no longer available エラー）→「自動選択」へ移行
-if(/^gemini-(2\.5|2\.0|1\.5)/.test(CFG.geminiModel||'')){ CFG.geminiModel=''; LS.set('cfg',CFG); }
 // 開発初期のひらがな名簿が残っている端末は本名リストへ自動移行（正式な名簿は次の同期でサーバから届く）
 if((CFG.members||[]).some(m=>['みおり','ゆいの','そうた'].includes(m.name))){ CFG.members=MEMBERS0.map(m=>({...m})); LS.set('cfg',CFG); }
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
@@ -681,23 +706,48 @@ LS.set('cfg',CFG);
 let ME = LS.get('me', '');
 if(!ME) CFG.appKey='';   // 名前未設定の端末は合言葉を記憶しない＝開くたびに毎回入力を求める（名前を選んだ端末だけ記憶）
 let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者パスワードで解除）
-let ADMIN_PASS = (CFG.adminPass||'1270');  // 管理者パスワード（サーバのmetaで全員共有・変更可。既定1270）
+let _aiReady=false;  // AIキーがサーバに設定済みか（doGetのaiReadyで更新。キー本体はフロントに一切持たない）
+let _adminEmail=''; // 管理者の警告メール通知先（表示用。サーバが正）
 const ADMIN_DEFAULT = '田中大翔';           // 管理者メニューを出す本名（この人が選ばれたときだけ表示。ほかの人には管理者の存在を見せない）
 let ADMIN_NAME = (CFG.adminName||'');       // 管理者にできる本名（metaで共有）。空=未登録（最初にパス解錠した人が自動登録）
 let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
 let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
 // 管理者＝「登録された本名(ADMIN_NAME)」かつ「この端末でパス解錠済み」。未登録の間だけ、名前を選んだ人がパスで登録できる。
 let _maint=false;   // メンテナンスモード：Claudeが修復・システム点検で使う（UIには一切出さない。合言葉つきでのみ有効化）
-window.claudeMaint=(pass)=>{ if(pass!==(CFG.appKey||'9th26131')){ return false; } _maint=true; try{ toast('メンテナンスモード ON'); render(); }catch(e){} return true; };
+window.claudeMaint=async(pass)=>{ try{ const r=await apiPost({action:'checkadminpass',pass}); if(r&&r.ok){ _maint=true; try{ toast('メンテナンスモード ON'); render(); }catch(e){} return true; } }catch(e){} return false; }; // 照合は100%サーバ側（フロントにパスの痕跡を残さない）
 window.claudeMaintOff=()=>{ _maint=false; try{ render(); }catch(e){} return false; };
 const canEdit=()=>!!ME||_maint;   // 追加・編集できるのは「名前を選んでログインした人」だけ（メンテ時のみClaudeが一時許可）
 function requireName(){ if(canEdit()) return true; toast('追加・編集するには、まず設定で自分の名前を選んでください'); return false; }
+// AIアシスタントは「名前を選んだ人」だけが使える（未設定ユーザーのAPI利用をフロントで遮断。サーバ側でも二重に拒否）
+function requireNameAI(){ if(ME||_maint) return true; toast('AIアシスタントは、設定で自分の名前を選んだ人だけが使えます'); openCfg(); return false; }
 const isAdmin = () => _maint || (!CFG.url && !ME) || (ADMIN_OK && (ADMIN_NAME==='' || ME===ADMIN_NAME));
-let DEV = LS.get('dev',''); if(!DEV){ DEV='d'+Math.random().toString(36).slice(2)+Date.now().toString(36); LS.set('dev',DEV); } // この端末の識別子（本名の予約に使う）
+let DEV = LS.get('dev','');   // この端末の識別子（本名の予約に使う）
+if(!DEV){   // localStorageに無い＝新端末 or 揮発。Cookieに退避したdevがあれば引き継ぐ（＝本人確認のやり直しを防ぐ）
+  try{ const _c=JSON.parse(CK.get(IDCK)||'null'); if(_c&&_c.dev) DEV=String(_c.dev); }catch(e){}
+  if(!DEV) DEV='d'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+  LS.set('dev',DEV);
+}
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
 let CLAIMS  = LS.get('claims', {});        // 本名→端末IDの配列（同じ人の複数端末を許可）
 let PINSET  = LS.get('pinset', {});        // 本名→暗証番号が設定済みか(true/false)。番号そのものはサーバのみが知る
 let GOALS   = LS.get('goals', {zemi:'',gen:''}); // ホームに出す目標（管理者が設定・サーバ共有）
+// 【揮発性対策】localStorageが消えていてもCookieに退避した身元があれば復元する。
+// devは無条件で引き継ぐ（同じ端末＝本人確認のやり直しを防ぐ）。名前は「名簿にある名前」だけ復元（汚染防止）。
+let _idRestored=false, _wiped=false;
+// 端末IDは上のDEV初期化でCookieから引き継ぎ済み。ここでは名前(ME)を復元し、揮発を検知する。
+(function restoreIdentity(){
+  try{
+    const raw=CK.get(IDCK); if(!raw) return;
+    const c=JSON.parse(raw); if(!c||typeof c!=='object') return;
+    // Cookieに名前があるのにlocalStorageから消えている＝この端末はデータが飛んだ（揮発）と判断
+    if(c.me && !ME) _wiped=true;
+    if(!ME && c.me && (CFG.members||[]).some(m=>m.name===c.me)){                                  // 名前の復元（名簿検証つき＝汚染防止）
+      ME=String(c.me); LS.set('me',ME); _idRestored=true; _wiped=false;                           // 自動復元できたので再紐付けUIは出さない
+      if(c.ml){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',Number(c.mla)||now()); }
+    }
+  }catch(e){}
+})();
+backupIdentity();   // 起動時に最新の身元をCookieへ書き戻す（初回・DEV新規発行時も確実に退避）
 const dispName = name => (DISPLAY[name]||name); // カレンダー等に出す名前は表示名（未設定なら本名）
 // テーマ（ライト/ダーク/自動）
 function applyTheme(){
@@ -773,11 +823,33 @@ function migrate(db){
 }
 
 /* ------------------ サーバAPI ------------------ */
-async function apiPost(body){
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// 排他制御との協調：サーバがロックを取れず {busy:true} を返したときや一時的な通信失敗のとき、
+// ランダムなウェイト（ジッター）を挟んで自動で数回リトライする。全アクションは冪等（mergeはLWW）なので再送は安全。
+async function apiPost(body, _try){
+  _try=_try||0;
   body.key=CFG.appKey||''; body.me=ME||''; body.v=APP_V;   // me=操作の記録用、v=古い版からの保存をサーバで拒否（データ混同防止）
-  const r=await fetch(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
-  if(!r.ok) throw new Error('HTTP '+r.status);
-  const j=await r.json(); if(j&&j.error) throw new Error(j.error); return j;
+  const MAXTRY=4;
+  try{
+    const r=await fetch(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
+    if(!r.ok){
+      if((r.status>=500||r.status===429) && _try<MAXTRY){ await sleep(400*(_try+1)+Math.floor(Math.random()*500)); return apiPost(body,_try+1); }
+      throw new Error('HTTP '+r.status);
+    }
+    const j=await r.json();
+    if(j&&j.busy){   // サーバが混雑（10秒以内にロックを取れなかった）→ ジッターを挟んで自動リトライ
+      if(_try<MAXTRY){ await sleep(400*(_try+1)+Math.floor(Math.random()*500)); return apiPost(body,_try+1); }
+      throw new Error('サーバが混み合っています。しばらくして再度お試しください');
+    }
+    if(j&&j.error) throw new Error(j.error);
+    return j;
+  }catch(e){
+    // fetch自体の失敗（一時的なネットワーク断など）も数回だけ自動リトライ
+    if(/busy|HTTP 5|HTTP 429/.test(String(e.message))===false && /Failed to fetch|NetworkError|load failed/i.test(String(e.message)) && _try<MAXTRY){
+      await sleep(400*(_try+1)+Math.floor(Math.random()*500)); return apiPost(body,_try+1);
+    }
+    throw e;
+  }
 }
 let _booted=false;   // アプリを開いた記録は起動時の1回だけサーバに残す
 let _sig='',_pollN=0; // 通信量の節約：前回と同じデータならサーバは「変化なし」だけ返す（20秒ごとの全データ受信をやめる）
@@ -1770,6 +1842,7 @@ function renderAiChat(loading){
   el.scrollTop=el.scrollHeight;
 }
 function openAI(){
+  if(!requireNameAI()) return;   // 名前未設定の端末はAIを開けない
   $('#ai_quick').innerHTML=AI_PRESETS.map(p=>`<button data-p="${esc(p)}">${esc(p)}</button>`).join('');
   $('#ai_quick').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#ai_q').value=b.dataset.p;askAI();});
   renderAiChat(false);
@@ -1802,44 +1875,12 @@ function buildAIContext(){
   }
   return lines.join('\n');
 }
-/* Geminiのモデルは次々に廃止される → キーで使えるモデル一覧から自動で選ぶ（設定「自動」時） */
-let _gmPick=null;
-async function geminiModel(){
-  if(CFG.geminiModel) return CFG.geminiModel;
-  if(_gmPick) return _gmPick;
-  const c=LS.get('gmodel',null);
-  if(c&&c.m&&c.t>now()-7*864e5){ _gmPick=c.m; return c.m; }   // 1週間キャッシュ
-  try{
-    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key='+encodeURIComponent(CFG.geminiKey));
-    const j=await r.json();
-    const ms=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>String(m.name||'').replace('models/',''));
-    const pick=ms.find(n=>n==='gemini-flash-latest')
-      ||ms.filter(n=>/flash/.test(n)&&!/lite|preview|exp|8b|image|tts|live|thinking|audio/.test(n)).sort().reverse()[0]
-      ||ms.filter(n=>/flash/.test(n)).sort().reverse()[0]||ms[0];
-    if(pick){ _gmPick=pick; LS.set('gmodel',{m:pick,t:now()}); return pick; }
-  }catch(e){}
-  return 'gemini-flash-latest';
-}
 async function aiGenerate(x,q){
-  // x = partsの配列 か、{role,parts}の会話配列。qは質問の要約（logシート記録用）
+  // x = partsの配列 か、{role,parts}の会話配列。qは質問の要約（logシート記録用）。
+  // AIは常にGASプロキシ経由＝Geminiキー・モデル選択はサーバの中だけ（フロントは鍵を一切持たない・直Google叩き無し）。
+  // ※ contents（プロンプト・データ文脈）の構造は従来と完全に同一。コアロジック非破壊。
   const contents=(Array.isArray(x)&&x[0]&&x[0].role)?x:[{parts:x}];
-  // 共有モードではGAS経由で呼ぶ＝APIキーはサーバの中だけ（端末に配らないので抜き取り不可能）
-  if(CFG.url){ const r=await apiPost({action:'ai',contents,q:q||''}); return r.text||''; }
-  for(let att=0;att<2;att++){
-    const model=await geminiModel();
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(CFG.geminiKey)}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents})});
-    const data=await r.json();
-    if(r.ok) return data.candidates?.[0]?.content?.parts?.map(p=>p.text).join('')||'';
-    const msg=data.error?.message||('HTTP '+r.status);
-    // モデル廃止・提供終了系のエラー → 自動選択をやり直してもう一度だけ試す
-    if(att===0&&/no longer available|not found|not supported|deprecated|retired/i.test(msg)){
-      _gmPick=null; LS.set('gmodel',null);
-      if(CFG.geminiModel){ CFG.geminiModel=''; LS.set('cfg',CFG); }
-      continue;
-    }
-    throw new Error(msg);
-  }
+  const r=await apiPost({action:'ai',contents,q:q||''}); return r.text||'';
 }
 /* AIの回答から「予定の追加・削除・完了の提案」ブロックを取り出す */
 let _aiAdds=[],_aiDels=[],_aiDones=[];
@@ -1856,8 +1897,9 @@ function aiExtractAdds(txt){
   return {clean:String(txt).replace(m[0],'').trim(), adds, dels, dones};
 }
 async function askAI(){
+  if(!requireNameAI()) return;   // 名前未設定ならAPIを叩かせない（クイックボタン経由も含めて遮断）
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
-  if(!CFG.url&&!CFG.geminiKey){ toast('設定でGemini APIキーを入れてください'); openCfg(); return; }   // 共有モードはサーバのキーで全員使える
+  if(!CFG.url){ toast('サーバに接続されていません'); return; }   // AIはサーバ（GASプロキシ）経由でのみ動作。キーが未設定ならサーバがエラーを返す
   $('#ai_q').value='';
   $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[]; _aiDones=[];
   _aiChat.push({role:'user',text:q}); renderAiChat(true);
@@ -1943,8 +1985,9 @@ function renderMemListRO(){
 // 管理者パスワードの照合（共有中はサーバで照合＝パスは端末に配られない。端末内のみモードはローカル既定値と比較）
 async function checkAdminPass(p){
   if(p==null||!String(p).trim()) return false;
-  if(CFG.url){ try{ const r=await apiPost({action:'checkadminpass',pass:p}); return !!(r&&r.ok); }catch(e){ return p===ADMIN_PASS; } }
-  return p===ADMIN_PASS;
+  // 照合は100%サーバ（GAS）側。フロントにはパスワードもフォールバック比較も一切持たない。
+  if(!CFG.url) return false;
+  try{ const r=await apiPost({action:'checkadminpass',pass:p}); return !!(r&&r.ok); }catch(e){ return false; }
 }
 function paintAdmin(){
   // 管理者メニューは「田中大翔」を選んだ端末だけに表示（初回の名前登録中や他の人には一切出さない）
@@ -1952,6 +1995,18 @@ function paintAdmin(){
   const on = isAdmin();
   $('#adminWrap').hidden = !on;
   const b=$('#c_adminBtn'); if(b) b.style.display = on ? 'none' : (eligible ? '' : 'none');
+  // 監査セクションは「田中大翔（登録管理者）が解錠中」なら表示。実際に押せるのは「管理者シークレット保持時のみ」
+  // （サーバも name＋secret を二重検証）。未登録の端末はボタンを無効化して理由を明示する。
+  const aw=$('#c_auditWrap');
+  if(aw){
+    const canSee = on && !!ADMIN_NAME && ME===ADMIN_NAME;
+    aw.hidden = !canSee;
+    const registered = !!adminSecret();
+    const ab=$('#c_auditBtn'); if(ab){ ab.disabled = !registered; ab.style.opacity = registered?'':'0.55'; }
+    const hint=$('#c_auditHint'); if(hint) hint.style.display = registered ? 'none' : '';
+    renderAiStatus();   // 管理者メニュー表示時にAI状態も最新化
+  }
+  const em=$('#c_admemail'); if(em && !em.value) em.value=_adminEmail||'';
   const w=$('#c_adminwho'); if(w) w.textContent = ADMIN_NAME
     ? 'この端末で管理者メニューを使えます。機種変更しても、新しい端末で自分の名前とパスを入れるだけで引き継げます（特別な操作は不要）。'
     : 'この端末を管理者として登録します（最初に登録した人だけが管理者になります）。';
@@ -1960,15 +2015,74 @@ $('#c_adminBtn').onclick=async()=>{
   if(isAdmin()){ paintAdmin(); return; }
   if(!ME){ toast('先に自分の名前を選んで保存してください'); return; }
   if(ADMIN_NAME && ME!==ADMIN_NAME){ toast('管理者だけが使えます'); return; }
+  // ① パスワードレス自動認証：この端末に管理者シークレットがあればパス不要（サーバが二重検証）
+  if(adminSecret() && await tryAdminAuto()){ ADMIN_OK=true; toast('管理者メニューを表示します'); paintAdmin(); return; }
+  // ② パスワード認証：成功でサーバがシークレットを発行→この端末に固定保存
   const p=prompt('管理者パスワードを入力してください'); if(p===null) return;
-  if(!(await checkAdminPass(p))){ toast('パスワードが違います'); return; }
-  ADMIN_OK=true;
-  if(ADMIN_NAME===''){ // 最初にパス解錠した人を、唯一の管理者として登録
-    ADMIN_NAME=ME; CFG.adminName=ME; LS.set('cfg',CFG);
-    if(CFG.url){ try{ await apiPost({action:'setadminname',name:ME}); }catch(e){} }
-    toast('「'+ME+'」さんを管理者に登録しました（以後この人だけが管理者）');
-  } else toast('管理者メニューを表示します');
-  paintAdmin();
+  let r=null; try{ r=await apiPost({action:'adminunlock',name:ME,pass:p,dev:DEV,ua:navigator.userAgent}); }catch(e){}
+  if(r&&r.ok){
+    ADMIN_OK=true;
+    if(r.secret) setAdminSecret(r.secret);          // 管理者デバイスシークレットを固定
+    if(r.adminname){ ADMIN_NAME=r.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); }
+    toast(r.secret?'この端末を管理者デバイスとして登録しました':'管理者メニューを表示します');
+    paintAdmin(); return;
+  }
+  // ③ フォールバック：サーバ(GAS)がまだ最新版でなく adminunlock 非対応でも、正しいパスなら従来方式で解錠する。
+  //    （デバイス固定＝シークレットはサーバ再デプロイ後に自動で有効化される。＝更新遅延に強い設計）
+  if(await checkAdminPass(p)){
+    ADMIN_OK=true;
+    if(ADMIN_NAME===''){ ADMIN_NAME=ME; CFG.adminName=ME; LS.set('cfg',CFG); try{ await apiPost({action:'setadminname',name:ME}); }catch(e){} }
+    toast('管理者メニューを表示します（端末固定はサーバ更新後に有効化）');
+    paintAdmin(); return;
+  }
+  toast('パスワードが違います');
+};
+// 管理者シークレットによるパスワードレス自動認証（サーバで名前＋シークレットを二重検証）
+async function tryAdminAuto(){
+  if(!adminSecret()||!CFG.url) return false;
+  try{ const r=await apiPost({action:'adminunlock',name:ME,secret:adminSecret(),dev:DEV,ua:navigator.userAgent}); return !!(r&&r.ok); }
+  catch(e){ return false; }
+}
+// 監査レポート（読み取り専用）。サーバが名前＋シークレットを二重検証してから中身を返す。
+$('#c_auditBtn').onclick=async()=>{
+  if(!(ME===ADMIN_NAME && adminSecret())){ toast('管理者デバイスのみ使えます'); return; }
+  const btn=$('#c_auditBtn'); btn.disabled=true; btn.textContent='確認中…';
+  try{
+    const r=await apiPost({action:'audit',name:ME,secret:adminSecret(),dev:DEV,ua:navigator.userAgent});
+    if(!(r&&r.ok&&r.report)) throw new Error('権限がありません');
+    renderAudit(r.report);
+  }catch(e){ toast('監査を表示できません：'+e.message); }
+  btn.disabled=false; btn.textContent='🛡 セキュリティ監査レポートを表示';
+};
+function renderAudit(rep){
+  $('#audit_meta').textContent='生成: '+(rep.generatedAt||'')+' ／ 管理者デバイス '+(rep.adminDevices||0)+'台';
+  const card=(label,val,sub)=>`<div style="flex:1;min-width:110px;background:var(--card,#fff);border:1px solid var(--line,#e5e2da);border-radius:12px;padding:12px 14px">
+      <div style="font-size:12px;color:var(--muted)">${esc(label)}</div>
+      <div style="font-size:26px;font-weight:800;color:var(--brass-d,#8a6d3b);line-height:1.15">${esc(String(val))}</div>
+      ${sub?`<div style="font-size:11px;color:var(--faint)">${esc(sub)}</div>`:''}</div>`;
+  const sus=rep.suspicious||[];
+  const susHtml = sus.length
+    ? `<div style="margin-top:14px"><div class="sec" style="margin:0 0 6px;font-size:14px">直近の不審なログ（${sus.length}件）</div>`
+      + sus.map(s=>`<div style="border-left:3px solid #b0483c;background:rgba(176,72,60,.06);padding:6px 10px;margin-bottom:6px;border-radius:6px">
+          <div style="font-size:12px;font-weight:700">${esc(s.action||'')}</div>
+          <div style="font-size:11px;color:var(--muted)">${esc(s.when||'')}</div>
+          <div style="font-size:12px;word-break:break-all">${esc(s.detail||'')}</div></div>`).join('')
+      + `</div>`
+    : `<div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:rgba(46,95,83,.08);color:#2e5f53;font-weight:700">✅ 直近50件のログに不審なアクセスは見つかりませんでした</div>`;
+  $('#audit_body').innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${card('名簿登録数',rep.memberCount,'人')}
+      ${card('暗証番号 設定済み',rep.pinCount,'人')}
+      ${card('管理者デバイス',rep.adminDevices,'台')}
+    </div>${susHtml}`;
+  $('#auditsheet').hidden=false;
+}
+$('#auditClose').onclick=()=>$('#auditsheet').hidden=true;
+$('#auditsheet').onclick=e=>{ if(e.target.id==='auditsheet') $('#auditsheet').hidden=true; };
+$('#c_admemailsave').onclick=async()=>{
+  if(!adminSecret()){ toast('管理者デバイスのみ設定できます'); return; }
+  const em=$('#c_admemail').value.trim();
+  try{ const r=await apiPost({action:'setadminemail',secret:adminSecret(),email:em}); if(r&&r.ok){ _adminEmail=em; toast('通知先を保存しました'); } else toast('保存できませんでした'); }
+  catch(e){ toast('保存に失敗：'+e.message); }
 };
 $('#c_admchg').onclick=async()=>{
   if(!isAdmin()){ toast('先に管理者メニューを開いてください'); return; }
@@ -1980,11 +2094,7 @@ $('#c_admchg').onclick=async()=>{
       if(!(r&&r.ok)){ toast('今のパスワードが違います'); return; }
       toast('管理者パスワードを変更しました（全員に反映）');
     }catch(e){ toast('保存に失敗：'+e.message); return; }
-  } else {
-    if(cur!==ADMIN_PASS){ toast('今のパスワードが違います'); return; }
-    ADMIN_PASS=nv; CFG.adminPass=nv; LS.set('cfg',CFG);
-    toast('管理者パスワードを変更しました');
-  }
+  } else { toast('サーバに接続してから変更してください'); return; }   // パスはサーバのみが保持（フロントに痕跡を残さない）
   $('#c_admnew').value='';
 };
 $('#c_goalsave').onclick=async()=>{
@@ -2068,6 +2178,12 @@ $('#c_me').addEventListener('change',refreshIcsField);
 $('#c_url').addEventListener('input',refreshIcsField);
 $('#c_key').addEventListener('input',refreshIcsField);
 $('#c_icscopy').onclick=()=>{ const u=$('#c_ics').value; if(!u){toast('共有(URL)と自分の名前を設定してください');return;} navigator.clipboard?.writeText(u); toast('URLをコピーしました'); };
+// AIキーの有無だけを表示（真偽値はdoGetのaiReadyから。キー本体はサーバのみが保持）
+function renderAiStatus(){
+  const el=$('#c_aistatus'); if(!el) return;
+  el.textContent=_aiReady?'✅ サーバにAIキーが設定済み（ゼミ全員が利用できます）':'⚠️ 未設定（管理者がGASのスクリプトプロパティ GEMINI_KEY を設定してください）';
+  el.style.color=_aiReady?'var(--ok,#2e7d32)':'var(--warn,#b26a00)';
+}
 function openCfg(){
   memEdit=CFG.members.map(m=>({...m}));
   refreshMeOptions(); renderMemList(); paintTheme();
@@ -2087,9 +2203,9 @@ function openCfg(){
   }
   // 名簿は全員に表示。管理メニュー（追加・削除・AIキー・パス変更）は管理者パスで解錠したときだけ。
   renderMemListRO(); paintAdmin();
-  $('#c_url').value=CFG.url;
+  $('#c_url').value=CFG.url;   // 非表示のhidden入力。ICSリンク生成に内部利用
   $('#c_keyon').checked=!!CFG.appKey; $('#c_keywrap').hidden=!CFG.appKey; $('#c_key').value=CFG.appKey||'';
-  $('#c_gkey').value=CFG.geminiKey||''; $('#c_gmodel').value=CFG.geminiModel||'';
+  renderAiStatus();   // AIキーの有無だけを表示（キー本体はサーバのみ・フロントに持たない）
   $('#c_span').checked=CFG.spanArrow!==false;
   $('#c_syncinfo').textContent='アプリ v'+APP_V+(_lastSync?'・最終同期 '+_lastSync:'');
   $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
@@ -2124,14 +2240,11 @@ $('#c_file').onchange=e=>{
 $('#openCfgBtn').onclick=openCfg;
 $('#cfgNo').onclick=()=>$('#cfg').hidden=true;
 $('#cfgOk').onclick=async()=>{
-  CFG.url=$('#c_url').value.trim();
+  CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定（編集UI廃止）
   CFG.appKey=$('#c_keyon').checked?$('#c_key').value.trim():'';
   const wasAdmin=isAdmin();
-  if(wasAdmin){ // AIキー・モデル・メンバーは管理者のみ変更可
-    CFG.geminiKey=$('#c_gkey').value.trim();
-    CFG.geminiModel=$('#c_gmodel').value;
+  if(wasAdmin){ // メンバーは管理者のみ変更可（AIキーはフロントで扱わない＝サーバのGEMINI_KEYのみ）
     CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||'',email:m.email||''})).filter(m=>m.name);
-    if(CFG.url&&CFG.geminiKey) apiPost({action:'setgemkey',gemkey:CFG.geminiKey}).catch(()=>{});   // キーを全員に配る（全員がAIを使える）
   }
   CFG.spanArrow=$('#c_span').checked;
   const chosen=$('#c_me').value;
@@ -2162,7 +2275,7 @@ $('#cfgOk').onclick=async()=>{
     }catch(e){ /* オフライン等は後続同期でリトライ */ }
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:'',email:''});
-  LS.set('cfg',CFG);LS.set('me',ME);$('#cfg').hidden=true;
+  LS.set('cfg',CFG);LS.set('me',ME);backupIdentity();$('#cfg').hidden=true;
   if(wasAdmin&&CFG.url){ apiPost({action:'members',members:CFG.members}).catch(()=>{}); } // 名簿を全員に配る
   if(CFG.url){ await syncNow(); } else { setSync('off'); render(); }
 };
@@ -2182,7 +2295,8 @@ $('#bkNo').onclick=()=>$('#bulksheet').hidden=true;
 $('#bulksheet').onclick=e=>{if(e.target.id==='bulksheet')$('#bulksheet').hidden=true};
 /* PDF → AIで日付・内容を読み取って下の欄に入れる */
 $('#bk_pdf').onclick=()=>{
-  if(!CFG.url&&!CFG.geminiKey){ toast('PDF読み取りにはAIキーが必要です。設定→🔑管理者メニュー→AI（Gemini APIキー）に入れてください'); return; }
+  if(!requireNameAI()) return;   // PDF読み取りもAI経由なので、名前未設定の端末は使えない
+  if(!CFG.url){ toast('サーバに接続されていません'); return; }   // PDF読み取りもGASプロキシ経由（キーはサーバ側）
   $('#bk_pdffile').click();
 };
 $('#bk_pdffile').onchange=e=>{
@@ -2359,13 +2473,14 @@ function applyMeta(remote){
   if(remote.claims){ CLAIMS=remote.claims; LS.set('claims',CLAIMS); }
   if(remote.pinset){ PINSET=remote.pinset; LS.set('pinset',PINSET); } // どの名前に暗証番号があるか（番号自体は来ない）
   if(remote.goals){ GOALS=remote.goals; LS.set('goals',GOALS); }      // 目標（管理者が設定）
+  if(typeof remote.aiReady==='boolean'){ _aiReady=remote.aiReady; if(!$('#cfg').hidden) renderAiStatus(); }   // AIキーの有無（真偽値のみ）
   // AIキーは配らない（サーバの中だけ・action=ai経由で全員使える＝抜き取り不可能）
   // 管理者パスは同期しない（サーバ側で照合。応答に載せると誰でも見えてしまうため）
   if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
   // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
   const ul=remote.unlocks||{};
   if(ME&&ME_LOCKED&&ul[ME]&&ul[ME]>LS.get('meLockedAt',0)){
-    ME_LOCKED=false; LS.set('meLocked',false);
+    ME_LOCKED=false; LS.set('meLocked',false); backupIdentity();
     toast('管理者により名前の変更が許可されました（設定から選び直せます）');
   }
 }
@@ -2420,12 +2535,14 @@ async function boot(){
   render();
   if(!LS.get('tutDone',false)) showTut();   // 初めての人に3枚だけ説明
   if(CFG.url)await syncNow();
-  if(CFG.url&&!ME){ openCfg(); toast('まずは自分の名前を選んでください'); } // 各自が自分を選ぶ
+  // 管理者デバイスのパスワードレス自動認証（この端末にシークレットがあり、登録管理者本人のとき）
+  if(CFG.url&&ME&&ADMIN_NAME&&ME===ADMIN_NAME&&adminSecret()){ try{ if(await tryAdminAuto()) ADMIN_OK=true; }catch(e){} }
+  if(CFG.url&&!ME){ openCfg(); toast(_wiped?'データが初期化されたようです。自分の名前を選ぶと、暗証番号で元の予定・担当に安全に復元されます':'まずは自分の名前を選んでください'); } // 各自が自分を選ぶ（消えた端末は再紐付けへ）
   checkRecap();
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='37'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='43'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
