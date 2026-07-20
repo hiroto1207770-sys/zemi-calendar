@@ -629,7 +629,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <p class="help">プロジェクトが正しく表示されている端末で押すと、その内容をサーバに送り直して全員に反映します。新しい端末で「プロジェクト＆係」が空のときの復元用です。</p>
     <label>管理者パスワードを変更</label>
     <div class="row"><input id="c_admnew" type="text" inputmode="numeric" placeholder="新しい管理者パスワード"><button type="button" class="no" id="c_admchg" style="flex:0 0 auto;padding:0 16px">変更</button></div>
-    <p class="help">変更には今のパスワードが必要です。<b>忘れたとき</b>は、Googleスプレッドシートの「meta」シートで <b>key が adminpass</b> の行を削除すると、次の同期で <b>1270</b> に戻ります。</p>
+    <p class="help">変更には今のパスワードが必要です。<b>忘れたとき</b>は、Googleスプレッドシートの「meta」シートで <b>key が adminpass</b> の行を削除すると、次の同期で<b>初期パスワード</b>に戻ります。</p>
     <label>管理者の引き継ぎ</label>
     <button type="button" class="no" id="c_adminhandoff" style="width:100%">管理者の登録を解除する</button>
     <p class="help">機種変更では<b>不要</b>です（新しい端末で自分の名前＋パスを入れるだけ）。別の人に管理者を代わってもらうときだけ押してください。押すと未登録に戻り、次にパスを入れた人が管理者になります。</p>
@@ -711,6 +711,7 @@ let _adminEmail=''; // 管理者の警告メール通知先（表示用。サー
 const ADMIN_DEFAULT = '田中大翔';           // 管理者メニューを出す本名（この人が選ばれたときだけ表示。ほかの人には管理者の存在を見せない）
 let ADMIN_NAME = (CFG.adminName||'');       // 管理者にできる本名（metaで共有）。空=未登録（最初にパス解錠した人が自動登録）
 let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
+let _unlocks = {};                          // サーバの最新ロック解除記録 {本名:解除ts}（applyMetaで更新。時計非依存の消費判定に使う）
 let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
 // 管理者＝「登録された本名(ADMIN_NAME)」かつ「この端末でパス解錠済み」。未登録の間だけ、名前を選んだ人がパスで登録できる。
 let _maint=false;   // メンテナンスモード：Claudeが修復・システム点検で使う（UIには一切出さない。合言葉つきでのみ有効化）
@@ -1258,9 +1259,9 @@ function renderSync(){
 function freshItem(o){ let t=DB.items.find(x=>x.id===o.id); if(!t){ t=o; DB.items.push(t); } return t; }
 function freshPj(o){ let t=DB.projects.find(x=>x.id===o.id); if(!t){ t=o; DB.projects.push(t); } return t; }
 async function commit(ids){ LS.set('db',DB); render(); if(!CFG.url) return; if(ids&&ids.length) ids.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
-async function flush(){
+async function flush(force){
   if(!CFG.url||!pending.length) return;
-  if(syncState==='busy'){ setTimeout(flush,1500); return; }   // 同期中でも保存が滞留しないよう少し後に自動再送
+  if(!force && syncState==='busy'){ setTimeout(flush,1500); return; }   // 同期中でも保存が滞留しないよう少し後に自動再送（syncNowの並列呼び出しはforceで直進）
   const ids=pending.splice(0);
   const okId=x=>x&&x.id&&x.id!=='undefined'&&x.id!=='null';   // 壊れたidは送らない（データ破損の再発防止）
   const changed={projects:DB.projects.filter(p=>ids.includes(p.id)&&okId(p)),items:DB.items.filter(i=>ids.includes(i.id)&&okId(i))};
@@ -2048,32 +2049,68 @@ $('#c_auditBtn').onclick=async()=>{
   if(!(ME===ADMIN_NAME && adminSecret())){ toast('管理者デバイスのみ使えます'); return; }
   const btn=$('#c_auditBtn'); btn.disabled=true; btn.textContent='確認中…';
   try{
-    const r=await apiPost({action:'audit',name:ME,secret:adminSecret(),dev:DEV,ua:navigator.userAgent});
+    const t0=performance.now();
+    // c) レイテンシ計測：監査取得とクライアント診断を並列で（Promise.all）
+    const [r, diag] = await Promise.all([
+      apiPost({action:'audit',name:ME,secret:adminSecret(),dev:DEV,ua:navigator.userAgent}),
+      clientDiag()
+    ]);
+    const latency=Math.round(performance.now()-t0);
     if(!(r&&r.ok&&r.report)) throw new Error('権限がありません');
-    renderAudit(r.report);
+    renderAudit(r.report, {latency, diag});
   }catch(e){ toast('監査を表示できません：'+e.message); }
   btn.disabled=false; btn.textContent='🛡 セキュリティ監査レポートを表示';
 };
-function renderAudit(rep){
+// c) クライアント側の診断：キャッシュ保持状態・SW版・ローカルデータ量
+async function clientDiag(){
+  let swV='?'; try{ const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text(); swV=(t.match(/zemi-v\d+/)||['?'])[0]; }catch(e){}
+  let cacheNames=[]; try{ if(window.caches) cacheNames=await caches.keys(); }catch(e){}
+  const dbBytes=(localStorage.getItem('db')||'').length;
+  return { swV, appV:'zemi-v'+APP_V, swMatch: swV===('zemi-v'+APP_V), cacheCount:cacheNames.length, cacheNames:cacheNames.slice(0,4), dbKB:Math.round(dbBytes/1024) };
+}
+function renderAudit(rep, cli){
+  cli=cli||{}; const diag=cli.diag||{}; const lat=cli.latency;
   $('#audit_meta').textContent='生成: '+(rep.generatedAt||'')+' ／ 管理者デバイス '+(rep.adminDevices||0)+'台';
-  const card=(label,val,sub)=>`<div style="flex:1;min-width:110px;background:var(--card,#fff);border:1px solid var(--line,#e5e2da);border-radius:12px;padding:12px 14px">
+  const card=(label,val,sub,color)=>`<div style="flex:1;min-width:104px;background:var(--card,#fff);border:1px solid var(--line,#e5e2da);border-radius:12px;padding:12px 14px">
       <div style="font-size:12px;color:var(--muted)">${esc(label)}</div>
-      <div style="font-size:26px;font-weight:800;color:var(--brass-d,#8a6d3b);line-height:1.15">${esc(String(val))}</div>
+      <div style="font-size:24px;font-weight:800;color:${color||'var(--brass-d,#8a6d3b)'};line-height:1.15">${esc(String(val))}</div>
       ${sub?`<div style="font-size:11px;color:var(--faint)">${esc(sub)}</div>`:''}</div>`;
-  const sus=rep.suspicious||[];
-  const susHtml = sus.length
-    ? `<div style="margin-top:14px"><div class="sec" style="margin:0 0 6px;font-size:14px">直近の不審なログ（${sus.length}件）</div>`
-      + sus.map(s=>`<div style="border-left:3px solid #b0483c;background:rgba(176,72,60,.06);padding:6px 10px;margin-bottom:6px;border-radius:6px">
-          <div style="font-size:12px;font-weight:700">${esc(s.action||'')}</div>
-          <div style="font-size:11px;color:var(--muted)">${esc(s.when||'')}</div>
-          <div style="font-size:12px;word-break:break-all">${esc(s.detail||'')}</div></div>`).join('')
-      + `</div>`
-    : `<div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:rgba(46,95,83,.08);color:#2e5f53;font-weight:700">✅ 直近50件のログに不審なアクセスは見つかりませんでした</div>`;
-  $('#audit_body').innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap">
+  const sechead=t=>`<div class="sec" style="margin:16px 0 6px;font-size:14px">${esc(t)}</div>`;
+  const ok=(t)=>`<div style="padding:9px 12px;border-radius:8px;background:rgba(46,95,83,.08);color:#2e5f53;font-weight:700;font-size:13px">✅ ${esc(t)}</div>`;
+  const rows=(arr)=>arr.map(s=>`<div style="border-left:3px solid #b0483c;background:rgba(176,72,60,.06);padding:6px 10px;margin-bottom:6px;border-radius:6px;font-size:12px;word-break:break-all">${esc(String(s.detail!==undefined?(s.action+' ／ '+s.when+' ／ '+s.detail):s))}</div>`).join('');
+  // ① 概要
+  let html=`<div style="display:flex;gap:9px;flex-wrap:wrap">
       ${card('名簿登録数',rep.memberCount,'人')}
-      ${card('暗証番号 設定済み',rep.pinCount,'人')}
+      ${card('暗証番号設定済み',rep.pinCount,'人')}
       ${card('管理者デバイス',rep.adminDevices,'台')}
-    </div>${susHtml}`;
+    </div>`;
+  // ② a) データ整合性
+  const ig=rep.integrity||{}; const bad=(ig.badProjects||0)+(ig.badItems||0)+(ig.orphanItems||0);
+  html+=sechead('a) データ整合性')+`<div style="display:flex;gap:9px;flex-wrap:wrap">
+      ${card('プロジェクト',ig.projectCount!=null?ig.projectCount:'—','件')}
+      ${card('予定・やること',ig.itemCount!=null?ig.itemCount:'—','件')}
+      ${card('不整合',bad,'件', bad>0?'#b0483c':'#2e7d32')}
+    </div>`;
+  html+= bad>0
+    ? `<div style="margin-top:8px">${rows(ig.samples||[])}${(ig.samples||[]).length<bad?`<div style="font-size:11px;color:var(--muted)">…ほか ${bad-(ig.samples||[]).length} 件</div>`:''}</div>`
+    : `<div style="margin-top:8px">${ok('必須属性の欠落・孤立データはありません')}</div>`;
+  // ③ b) 未許可端末からの不審な接続
+  const sus=rep.suspicious||[];
+  html+=sechead('b) 不審な接続・警告ログ')+ (sus.length ? `<div>${rows(sus)}</div>` : ok('直近50件のログに不審なアクセスはありません'));
+  // ④ c) キャッシュ & レイテンシ
+  const latColor = lat==null?'':(lat<1200?'#2e7d32':(lat<3000?'#a9884f':'#b0483c'));
+  const latLabel = lat==null?'—':(lat<1200?'良好':(lat<3000?'やや遅延':'遅延'));
+  html+=sechead('c) キャッシュ & 通信レイテンシ')+`<div style="display:flex;gap:9px;flex-wrap:wrap">
+      ${card('GAS往復',lat!=null?lat+'ms':'—',latLabel,latColor)}
+      ${card('サーバ内処理',rep.serverMs!=null?rep.serverMs+'ms':'—')}
+      ${card('ローカルDB',diag.dbKB!=null?diag.dbKB+'KB':'—')}
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted);line-height:1.8">
+      アプリ版: <b>${esc(diag.appV||('zemi-v'+APP_V))}</b> ／ 配信SW: <b>${esc(diag.swV||'?')}</b>
+      ${diag.swMatch?'<span style="color:#2e7d32;font-weight:700"> ✓ 一致</span>':'<span style="color:#b0483c;font-weight:700"> ⚠ 不一致（再読込で更新）</span>'}<br>
+      キャッシュ保持: <b>${esc(String(diag.cacheCount!=null?diag.cacheCount:'?'))}</b>件 ${diag.cacheNames&&diag.cacheNames.length?'（'+esc(diag.cacheNames.join(', '))+'）':''}
+    </div>`;
+  $('#audit_body').innerHTML=html;
   $('#auditsheet').hidden=false;
 }
 $('#auditClose').onclick=()=>$('#auditsheet').hidden=true;
@@ -2251,7 +2288,8 @@ $('#cfgOk').onclick=async()=>{
   const nameChanged=!$('#c_me').disabled && chosen!==ME;
   if(nameChanged){
     ME=chosen; _adminUnlocked=false;
-    if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now()); } // 一度選んだら固定
+    if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now());
+      const _seen=LS.get('meUnlockSeen',{}); _seen[ME]=_unlocks[ME]||0; LS.set('meUnlockSeen',_seen); } // 一度選んだら固定（既存の解除記録は消費済みにして蒸し返さない）
   }
   // 本名の予約＋表示名の登録（サーバ共有）。
   // 本人確認＝各自の「暗証番号」。初めて選んだ人がその場で決め、以後どの端末でも同じ番号で入れる（他人は入れない）。
@@ -2477,32 +2515,48 @@ function applyMeta(remote){
   // AIキーは配らない（サーバの中だけ・action=ai経由で全員使える＝抜き取り不可能）
   // 管理者パスは同期しない（サーバ側で照合。応答に載せると誰でも見えてしまうため）
   if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
-  // 管理者によるロック解除（自分のロックより新しい解除記録があれば選び直せる）
-  const ul=remote.unlocks||{};
-  if(ME&&ME_LOCKED&&ul[ME]&&ul[ME]>LS.get('meLockedAt',0)){
-    ME_LOCKED=false; LS.set('meLocked',false); backupIdentity();
-    toast('管理者により名前の変更が許可されました（設定から選び直せます）');
+  // 管理者によるロック解除。端末間の時計ズレに依存しないよう「消費済みの解除ts」を記録して差分で判定する。
+  // （旧実装は サーバ時刻ul[ME] > クライアント時刻meLockedAt の比較で、時計ズレのある他端末で反映されない不具合があった）
+  const ul=remote.unlocks||{}; _unlocks=ul;
+  if(ME&&ME_LOCKED&&ul[ME]){
+    const seen=LS.get('meUnlockSeen',{});
+    if(String(seen[ME]||'')!==String(ul[ME])){        // まだ消費していない新しい解除記録 → ロック解除
+      ME_LOCKED=false; LS.set('meLocked',false);
+      seen[ME]=ul[ME]; LS.set('meUnlockSeen',seen);   // この解除は消費済みに（再選択後の再ロックで蒸し返さない）
+      backupIdentity();
+      if(!$('#cfg').hidden){ const s=$('#c_me'); if(s) s.disabled=false; const h=$('#c_mehelp'); if(h) h.textContent='名前を選び直せます（保存で確定）。'; } // 設定を開いていれば即座に選択可へ
+      toast('管理者により名前の変更が許可されました（設定から選び直せます）');
+    }
   }
 }
+// 軽量な変更シグネチャ。全DBの二重JSON.stringifyを避ける（updatedAtは変更時に必ず増える不変条件を利用）。
+function dbSig(db){
+  let mx=0; const ps=db.projects||[], is=db.items||[];
+  for(let k=0;k<ps.length;k++){ const u=ps[k].updatedAt||0; if(u>mx)mx=u; }
+  for(let k=0;k<is.length;k++){ const u=is[k].updatedAt||0; if(u>mx)mx=u; }
+  return ps.length+'.'+is.length+'.'+mx;
+}
+let _syncing=false;   // syncNowの多重実行防止（focus/interval/onlineが同時に来ても1本化）
 async function syncNow(){
   if(!CFG.url){setSync('off');return;}
-  await flush(); if(syncState==='busy')return;
-  setSync('busy');
+  if(_syncing) return;                 // 同時実行を1本化（並列flush/loadの取り合いを防ぐ）
+  _syncing=true; setSync('busy');
   try{
-    const remote=await API.load();
+    // 【高速化】保留中の送信(flush)とサーバ最新の取得(load)を並列実行。どちらもLWWマージなので順不同で安全＝往復を1回分短縮。
+    const [, remote] = await Promise.all([ flush(true), API.load() ]);
     if(remote&&remote.same){ setSync('ok'); _lastSync=new Date().toLocaleTimeString(); return; }   // 変化なし＝通信も描き直しも最小
     let missing=[],changed=false;
     if(remote&&remote.projects){
       // サーバに無いローカル分を洗い出して送る（初期データや同期漏れの自己修復。端末ごとに内容が違う問題を解消）
       const rp=new Set(remote.projects.map(p=>p.id)), ri=new Set((remote.items||[]).map(i=>i.id));
       missing=[...DB.projects.filter(p=>!rp.has(p.id)),...DB.items.filter(i=>!ri.has(i.id))].map(x=>x.id);
-      const before=JSON.stringify(DB);
+      const beforeSig=dbSig(DB);   // 軽量差分検出（全DBのJSON化を回避）
       DB=migrate(mergeInto(DB,remote));LS.set('db',DB);
-      changed=JSON.stringify(DB)!==before;
+      changed=dbSig(DB)!==beforeSig;
     }
     applyMeta(remote); setSync('ok'); _lastSync=new Date().toLocaleTimeString();
     if(changed) renderSoon();   // 変化があったときだけ描き直す（操作中の「ボタンが効かない」を防ぐ）
-    if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
+    if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(true); }
   }
   catch(e){
     console.warn('読み込み失敗',e); setSync(String(e.message)==='unauthorized'?'auth':'err');
@@ -2510,21 +2564,29 @@ async function syncNow(){
       _keyPrompting=true;
       const k=prompt('このゼミの「合言葉」を入力してください（みんなに配られた合言葉です）');
       _keyPrompting=false;
-      if(k!==null && k.trim()){ CFG.appKey=k.trim(); LS.set('cfg',CFG); syncNow(); }
+      if(k!==null && k.trim()){ CFG.appKey=k.trim(); LS.set('cfg',CFG); setTimeout(syncNow,0); }   // finallyで_syncing解放後に再同期
     }
   }
+  finally{ _syncing=false; }   // 多重実行ガードを必ず解放
 }
 let _keyPrompting=false;
 /* 初回チュートリアル */
 const TUT=[
   ['ようこそ！','「水野ゼミ カレンダー」はゼミ全員で予定・やること・プロジェクトを共有するアプリです。データは自動で同期されるので、いつ開いても最新です。下のタブで画面を切りかえます。'],
   ['追加はかんたん','右下の「＋」から予定・やることを追加。「📋 まとめて追加」なら期間や箇条書きで一気に登録できます。✨AIタブで「明日15時からバイト入れて」のように頼んで追加することもできます。'],
-  ['自分の名前と通知','設定で自分の名前を選ぶと、担当の表示や毎朝の通知が自分向けになります。iPhoneは「ホーム画面に追加」してから設定で通知をONにするのがおすすめです！']
+  ['自分の名前と通知','設定で自分の名前を選ぶと、担当の表示や毎朝の通知が自分向けになります。iPhoneはホーム画面に追加してから設定で通知をONにするのがおすすめです。'
+    +'<div style="margin-top:12px;padding:11px 13px;border-radius:11px;background:rgba(169,136,79,.10);border:1px solid rgba(169,136,79,.32);text-align:left;line-height:1.8">'
+    +'<b>📱 iPhoneをご利用の方</b><br>'
+    +'画面下の共有ボタン '
+    +'<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#a9884f" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px">'
+    +'<path d="M12 3v11"/><path d="M8.5 6.5 12 3l3.5 3.5"/>'
+    +'<path d="M7 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1"/></svg>'
+    +'（ ⎋ / 📤 ）をタップし、メニューから『<b>ホーム画面に追加</b>』を選択することでアプリとして利用できます。</div>']
 ];
 let _tutN=0;
 function showTut(){
   const [t,b]=TUT[_tutN];
-  $('#tutTitle').textContent=t; $('#tutBody').textContent=b;
+  $('#tutTitle').textContent=t; $('#tutBody').innerHTML=b;   // 本文は作者管理のHTML（iOS共有アイコンSVGを含む）
   $('#tutDots').innerHTML=TUT.map((_,i)=>`<span class="${i===_tutN?'on':''}"></span>`).join('');
   $('#tutNext').textContent=_tutN<TUT.length-1?'次へ':'はじめる！';
   $('#tut').hidden=false;
@@ -2542,7 +2604,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='43'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='44'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
