@@ -425,7 +425,6 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
       <div style="display:flex;align-items:center;gap:6px"><span style="color:var(--faint)">〜</span><input id="f_end" type="time"></div>
     </div>
   </div>
-  <div id="w_who"><label>担当・共有する人（複数可・任意）</label><div class="whopick" id="f_who"></div></div>
   <div id="w_rep" hidden><label>くり返し</label>
     <div class="row">
       <select id="f_rep">
@@ -456,14 +455,15 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
     <label>この回だけのメモ・リンク（<span id="onoteDate"></span> のみに表示）</label>
     <textarea id="f_onote" placeholder="この回だけの持ち物・発表資料のURLなど"></textarea>
   </div>
-  <label>公開範囲</label>
+  <label>だれと共有しますか？</label>
   <div class="seg" id="f_vis">
-    <button type="button" data-v="all" class="on">全体公開</button>
-    <button type="button" data-v="team">チーム限定</button>
-    <button type="button" data-v="members">個人指定</button>
+    <button type="button" data-v="all" class="on">ゼミ全員</button>
+    <button type="button" data-v="team">チーム（班）</button>
+    <button type="button" data-v="members">指定した人だけ</button>
   </div>
-  <div id="w_team" hidden><label>表示するチーム</label><select id="f_team"></select></div>
-  <p class="help" id="visHelp">「全体公開」＝全員に表示。「チーム限定」＝そのチームに登録されたメンバーだけに表示。「個人指定」＝担当に入れた人と作成者だけに表示（数人だけの非公開予定に）。</p>
+  <div id="w_team" hidden><label>チームを選ぶ</label><select id="f_team"></select></div>
+  <div id="w_who"><label id="whoLabel">担当（任意）</label><div class="whopick" id="f_who"></div></div>
+  <p class="help" id="visHelp"></p>
   <label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input type="checkbox" id="f_imp" style="width:auto">★ 重要（目立たせる）</label>
   <div class="cmts" id="cmtWrap" hidden>
     <div class="sec">コメント <span class="cnt" id="cmtCnt">0</span></div>
@@ -589,7 +589,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   </div>
   <label>iPhoneカレンダーに反映</label>
   <div class="row"><input id="c_ics" readonly placeholder=""><button type="button" class="no" id="c_icscopy" style="flex:0 0 auto;padding:0 16px">コピー</button></div>
-  <p class="help">このURLを iPhone「設定 → アプリ → カレンダー → カレンダーアカウント → アカウントを追加 → その他 → 照会するカレンダーを追加」へ。<b>ゼミ全体と自分が関わる予定だけ</b>が反映されます。</p>
+  <p class="help">このURLを iPhone「設定 → アプリ → カレンダー → カレンダーアカウント → アカウントを追加 → その他 → 照会するカレンダーを追加」へ。<b>ゼミ全体と自分が関わる予定だけ</b>が反映されます。<b>このURLはあなた専用</b>（本人だけの合言葉つき）なので、他の人には教えないでください。</p>
 
   <div class="sec" style="margin-top:22px">通知（ロック画面に届く）</div>
   <div id="notifWrap">
@@ -689,7 +689,7 @@ function setAdminSecret(s){ if(!s) return; CK.set(ADMSEC_CK, s); LS.set('admsec'
 // 初期名簿は本名（サーバの名簿が正だが、初回起動・同期前でも正しい名前が出るように）
 const MEMBERS0 = ['田中大翔','根津柚花','村山美織梨','大野萌衣','上野さくら','東久保結衣','鈴木彩花','市岡佑梨菜','大塚莉乃','泉谷宗汰','椙山真衣','菅原月碧','会田葵'].map(n=>({name:n}));
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
-const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', icsToken:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定運用（フロントからの編集・保存を廃止＝プロキシ宛先を固定）
 // 【秘匿情報のGAS集約】フロントはGeminiキー等の秘密を一切持たない。過去に保存された痕跡をlocalStorageから抹消する。
 if(('geminiKey' in CFG)||('geminiModel' in CFG)||('adminPass' in CFG)){ delete CFG.geminiKey; delete CFG.geminiModel; delete CFG.adminPass; LS.set('cfg',CFG); }
@@ -1284,6 +1284,15 @@ const DOW=['日','月','火','水','木','金','土'];
 function paintVis(){
   document.querySelectorAll('#f_vis button').forEach(b=>b.classList.toggle('on',b.dataset.v===vis));
   fillTeamSelect($('#f_pj').value,editing?editing.team:'');
+  // 「指定した人だけ」のときだけ担当（共有する人）を選ぶ。全員・チームは選ぶ必要なし（自動で全員／チーム所属者）
+  $('#w_who').hidden = vis!=='members';
+  $('#whoLabel').textContent='共有する人（この人と作成者だけが見られます）';
+  const help={
+    all:   'ゼミ全員が見られます。担当を選ぶ必要はありません。',
+    team:  '選んだチームに登録されたメンバーが見られます。担当もそのメンバーです。',
+    members:'選んだ人と作成者だけが見られます。数人だけの予定に。'
+  };
+  $('#visHelp').textContent=help[vis]||help.all;
 }
 document.querySelectorAll('#f_vis button').forEach(b=>b.onclick=()=>{ vis=b.dataset.v; paintVis(); });
 function fillDays(){
@@ -1330,7 +1339,7 @@ function paintWho(){
 function setKind(k){
   kind=k;
   document.querySelectorAll('#kind button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
-  $('#w_time').hidden=k!=='event'; $('#w_edate').hidden=k!=='event'; $('#w_rep').hidden=k!=='event'; $('#w_who').hidden=false;
+  $('#w_time').hidden=k!=='event'; $('#w_edate').hidden=k!=='event'; $('#w_rep').hidden=k!=='event'; $('#w_who').hidden=(vis!=='members');
   $('#w_alsotask').hidden=k!=='event';   // 既存の予定の編集時にも「やることにも追加」できる
   $('#l_date').textContent=k==='task'?'期限':'日付';
   updateRepDays();
@@ -1465,7 +1474,7 @@ $('#save').onclick=()=>{
   const o={type:kind,pj:isOther?'':pjv,other:isOther?$('#f_other').value.trim():'',title:t,date:_d0,
     endDate:(isEv&&_d1&&_d1>_d0)?_d1:'',
     time:isEv&&!allday?$('#f_time').value:'', endTime:isEv&&!allday?$('#f_end').value:'',
-    who:pickedWho.slice(),team:tsp[1]||'',teamPj:tsp[1]?tsp[0]:'',
+    who:vis==='members'?pickedWho.slice():[],team:tsp[1]||'',teamPj:tsp[1]?tsp[0]:'',
     visibility:vis==='members'?'members':'all', important:$('#f_imp').checked,
     rep, days:(rep==='weekly'||rep==='biweekly')?pickedDays.slice():[],
     until:isEv?$('#f_until').value:'',note:$('#f_note').value.trim(),remind:$('#f_remind').value,updatedAt:now()};
@@ -2208,8 +2217,19 @@ document.querySelectorAll('#c_theme button').forEach(b=>b.onclick=()=>{ CFG.them
 function refreshIcsField(){
   const me=$('#c_me').value, url=$('#c_url').value.trim();
   const key=$('#c_keyon').checked?$('#c_key').value.trim():'';
-  $('#c_ics').value=(url&&me)?url+'?action=ics&me='+encodeURIComponent(me)+(key?'&key='+encodeURIComponent(key):''):'';
+  const tok=CFG.icsToken||'';   // 本人トークン（各自のURLに埋め込む・他人には教えない）
+  $('#c_ics').value=(url&&me)?url+'?action=ics&me='+encodeURIComponent(me)+(tok?'&t='+encodeURIComponent(tok):'')+(key?'&key='+encodeURIComponent(key):''):'';
   $('#c_ics').placeholder=(url&&me)?'':(!url?'「つなぎ先URL」を入れると表示されます':'上で自分の名前を選ぶと表示されます');
+}
+/* ICS購読の本人トークンをまだ持っていない端末なら発行してもらう（本人確認済みのときだけ・移行用）。 */
+async function ensureIcsToken(){
+  if(!ME||!CFG.url||CFG.icsToken) return;
+  if(!claimDevs(ME).includes(DEV)) return;   // この端末が本人確認(claim)済みのときだけ。未確認なら名前を選び直したとき発行される
+  try{
+    const disp=(DISPLAY[ME]||'');
+    const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,admin:isAdmin()});   // 既に予約済みなら暗証番号なしで通る（べき等）
+    if(r&&r.token){ CFG.icsToken=r.token; LS.set('cfg',CFG); refreshIcsField(); }
+  }catch(e){ /* オフライン等は次回に */ }
 }
 $('#c_me').addEventListener('change',refreshIcsField);
 $('#c_url').addEventListener('input',refreshIcsField);
@@ -2247,6 +2267,7 @@ function openCfg(){
   $('#c_syncinfo').textContent='アプリ v'+APP_V+(_lastSync?'・最終同期 '+_lastSync:'');
   $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
   refreshIcsField();
+  ensureIcsToken();   // 本人トークンが未取得なら取りに行き、取れたらICS URLを更新
   renderPushUI();
   $('#cfg').hidden=false;
 }
@@ -2310,6 +2331,7 @@ $('#cfgOk').onclick=async()=>{
       if(r&&r.claims){CLAIMS=r.claims;LS.set('claims',CLAIMS);}
       if(r&&r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
       if(r&&r.pinset){PINSET=r.pinset;LS.set('pinset',PINSET);}
+      if(r&&r.token){CFG.icsToken=r.token;LS.set('cfg',CFG);}   // ICS購読用の本人トークンを保存（URLに埋め込む）
     }catch(e){ /* オフライン等は後続同期でリトライ */ }
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:'',email:''});
