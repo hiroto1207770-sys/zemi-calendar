@@ -258,6 +258,31 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 .memrow .mn small{color:var(--faint);margin-left:6px;font-size:11px}
 .memrow button{flex:0 0 auto;font-size:12px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:6px 10px;background:var(--card)}
 .memrow .mdel{color:var(--warn);border-color:#e6cbc4}
+.admin-shell{margin-top:18px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--card-3)}
+.admin-head{display:flex;align-items:flex-start;gap:10px;padding:2px 2px 10px}
+.admin-head .admin-mark{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(169,136,79,.13);flex:0 0 auto}
+.admin-head b{display:block;font-size:14px;color:var(--ink)}
+.admin-head p{margin:2px 0 0;font-size:11px;color:var(--muted);line-height:1.55}
+.admin-group{border:1px solid var(--line);border-radius:11px;background:var(--card);margin-top:8px;overflow:hidden}
+.admin-group>summary{list-style:none;display:flex;align-items:center;gap:9px;padding:12px 13px;font-weight:700;font-size:13px;cursor:pointer}
+.admin-group>summary::-webkit-details-marker{display:none}
+.admin-group>summary::after{content:'›';margin-left:auto;color:var(--faint);font-size:18px;line-height:1;transition:transform .16s}
+.admin-group[open]>summary::after{transform:rotate(90deg)}
+.admin-group .admin-body{border-top:1px solid var(--line-2);padding:3px 13px 14px}
+.admin-group.danger>summary{color:var(--warn)}
+.online-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#31a85b;box-shadow:0 0 0 3px rgba(49,168,91,.13);margin:0 8px 1px 1px;vertical-align:middle}
+.online-label{font-size:10px;color:#2e7d32;font-weight:700;margin-left:4px}
+.audit-card{flex:1;min-width:104px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.audit-card[data-audit-detail]{cursor:pointer}
+.audit-card[data-audit-detail]:active{background:var(--card-2)}
+.audit-card .alabel{font-size:12px;color:var(--muted)}
+.audit-card .avalue{font-size:24px;font-weight:800;color:var(--brass-d);line-height:1.15}
+.audit-card .asub{font-size:11px;color:var(--faint)}
+.audit-detail{margin-top:9px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card-3);font-size:12px;line-height:1.7}
+.audit-detail h4{font-size:12px;margin:0 0 5px;color:var(--ink)}
+.audit-log{border-left:3px solid var(--warn);background:rgba(176,72,60,.06);padding:8px 10px;margin-bottom:7px;border-radius:6px;font-size:12px;word-break:break-word}
+.audit-log b{display:block;color:var(--warn);margin-bottom:2px}
+.audit-log small{display:block;color:var(--muted);margin-top:3px;line-height:1.55}
 .logoprev{width:100%;display:flex;align-items:center;gap:10px;margin-top:8px}
 .logoprev img{width:44px;height:44px;border-radius:10px;object-fit:cover;box-shadow:inset 0 0 0 1px var(--line)}
 .cmts{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
@@ -603,36 +628,54 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <p class="help">名簿は全員が見られます。</p>
   <div class="acts" style="margin-top:8px"><button type="button" class="no" id="c_adminBtn" style="flex:1">🔑 管理者メニュー</button></div>
 
-  <div id="adminWrap" hidden>
-    <div class="sec" style="margin-top:18px">管理者メニュー</div>
-    <p class="help" id="c_adminwho"></p>
-    <div id="c_auditWrap" hidden>
-      <label>セキュリティ・データ監査（読み取り専用）</label>
-      <button type="button" class="no" id="c_auditBtn" style="width:100%">🛡 セキュリティ監査レポートを表示</button>
-      <p class="help" id="c_auditHint" style="display:none">この端末はまだ「管理者デバイス」として登録されていません。サーバ更新後に管理者パスワードを入れ直すと自動登録され、監査が使えます。</p>
-      <p class="help">この端末が管理者デバイスとして登録済みのときだけ使えます。データは一切変更しません。</p>
-      <label>警告メールの通知先（未知の端末から管理者アクセスがあった時）</label>
-      <div class="row"><input id="c_admemail" type="email" inputmode="email" placeholder="管理者のGmail"><button type="button" class="no" id="c_admemailsave" style="flex:0 0 auto;padding:0 16px">保存</button></div>
-    </div>
-    <label>メンバー（🎂誕生日をカレンダー表示・🔓で名前ロック解除）</label>
-    <div id="c_memlist"></div>
-    <div class="row" style="margin-top:6px"><input id="c_memadd" placeholder="名前を入力して追加"><button type="button" class="no" id="c_memaddbtn" style="flex:0 0 auto;padding:0 16px">追加</button></div>
-    <label>AI（Gemini）の状態</label>
-    <div id="c_aistatus" class="help" style="padding:8px 10px;border-radius:8px;background:var(--card,#fff);border:1px solid var(--line,#e5e2da)">確認中…</div>
-    <p class="help">APIキーは<b>サーバ（GAS）のみ</b>が保持します。設定は管理者がGASのプロジェクト設定 → スクリプトプロパティに <b>GEMINI_KEY</b> を追加してください（このアプリにはキーを入力しません＝端末に鍵を置かない安全設計）。モデルはサーバが自動選択します。</p>
-    <label>目標（ホームに表示・全員に共有）</label>
-    <input id="c_goal1" placeholder="水野ゼミとしての目標">
-    <input id="c_goal2" placeholder="9期生としての目標" style="margin-top:6px">
-    <div class="acts" style="margin-top:6px"><button type="button" class="no" id="c_goalsave" style="flex:1">目標を保存</button></div>
-    <label>データの復元（新しい端末でプロジェクトが出ないとき）</label>
-    <button type="button" class="no" id="c_restore" style="width:100%">この端末のプロジェクト・予定を全員に送る</button>
-    <p class="help">プロジェクトが正しく表示されている端末で押すと、その内容をサーバに送り直して全員に反映します。新しい端末で「プロジェクト＆係」が空のときの復元用です。</p>
-    <label>管理者パスワードを変更</label>
-    <div class="row"><input id="c_admnew" type="text" inputmode="numeric" placeholder="新しい管理者パスワード"><button type="button" class="no" id="c_admchg" style="flex:0 0 auto;padding:0 16px">変更</button></div>
-    <p class="help">変更には今のパスワードが必要です。<b>忘れたとき</b>は、Googleスプレッドシートの「meta」シートで <b>key が adminpass</b> の行を削除すると、次の同期で<b>初期パスワード</b>に戻ります。</p>
-    <label>管理者の引き継ぎ</label>
-    <button type="button" class="no" id="c_adminhandoff" style="width:100%">管理者の登録を解除する</button>
-    <p class="help">機種変更では<b>不要</b>です（新しい端末で自分の名前＋パスを入れるだけ）。別の人に管理者を代わってもらうときだけ押してください。押すと未登録に戻り、次にパスを入れた人が管理者になります。</p>
+  <div id="adminWrap" class="admin-shell" hidden>
+    <div class="admin-head"><div class="admin-mark">🔐</div><div><b>管理者コンソール</b><p id="c_adminwho"></p></div></div>
+    <details class="admin-group" open>
+      <summary>🛡 監査と警告</summary>
+      <div class="admin-body" id="c_auditWrap" hidden>
+        <label>セキュリティ・データ監査（読み取り専用）</label>
+        <button type="button" class="no" id="c_auditBtn" style="width:100%">🛡 セキュリティ監査レポートを表示</button>
+        <p class="help" id="c_auditHint" style="display:none">この端末はまだ「管理者デバイス」として登録されていません。管理者パスワードを入れ直すと自動登録され、監査が使えます。</p>
+        <p class="help">登録済み管理者デバイスだけが取得できます。監査は読み取り専用で、予定・名簿・暗証番号を変更しません。</p>
+        <label>警告メールの通知先</label>
+        <div class="row"><input id="c_admemail" type="email" inputmode="email" placeholder="管理者のGmail"><button type="button" class="no" id="c_admemailsave" style="flex:0 0 auto;padding:0 16px">保存</button></div>
+      </div>
+    </details>
+    <details class="admin-group" open>
+      <summary>👥 メンバー管理</summary>
+      <div class="admin-body">
+        <p class="help">緑の点は直近1分以内にアプリを使用した人です。管理者だけに表示されます。</p>
+        <div id="c_memlist"></div>
+        <div class="row" style="margin-top:8px"><input id="c_memadd" placeholder="名前を入力して追加"><button type="button" class="no" id="c_memaddbtn" style="flex:0 0 auto;padding:0 16px">追加</button></div>
+        <p class="help">🎂は誕生日、🔓は本人端末で名前を選び直せるようにする操作です。</p>
+      </div>
+    </details>
+    <details class="admin-group">
+      <summary>✨ 表示・AI設定</summary>
+      <div class="admin-body">
+        <label>AI（Gemini）の状態</label>
+        <div id="c_aistatus" class="help" style="padding:8px 10px;border-radius:8px;background:var(--card);border:1px solid var(--line)">確認中…</div>
+        <p class="help">APIキーはサーバだけが保持します。管理者がGASのスクリプトプロパティに <b>GEMINI_KEY</b> を設定します。</p>
+        <label>目標（ホームに表示・全員に共有）</label>
+        <input id="c_goal1" placeholder="水野ゼミとしての目標">
+        <input id="c_goal2" placeholder="9期生としての目標" style="margin-top:6px">
+        <div class="acts" style="margin-top:8px"><button type="button" class="no" id="c_goalsave" style="flex:1">目標を保存</button></div>
+      </div>
+    </details>
+    <details class="admin-group danger">
+      <summary>⚠ 復元・認証・引き継ぎ</summary>
+      <div class="admin-body">
+        <label>データの復元</label>
+        <button type="button" class="no" id="c_restore" style="width:100%">この端末のプロジェクト・予定を全員に送る</button>
+        <p class="help">プロジェクトが正しく表示されている端末でだけ使用します。実行前に件数を確認します。</p>
+        <label>管理者パスワードを変更</label>
+        <div class="row"><input id="c_admnew" type="password" inputmode="numeric" autocomplete="new-password" placeholder="新しい管理者パスワード"><button type="button" class="no" id="c_admchg" style="flex:0 0 auto;padding:0 16px">変更</button></div>
+        <p class="help">変更には現在のパスワードが必要です。パスワードはブラウザや画面内には保存しません。</p>
+        <label>管理者の引き継ぎ</label>
+        <button type="button" class="no" id="c_adminhandoff" style="width:100%">管理者の登録を解除する</button>
+        <p class="help">機種変更では不要です。別の人へ管理者を交代するときだけ使用します。</p>
+      </div>
+    </details>
   </div>
 
   <div class="sec" style="margin-top:22px">まとめて追加・データ</div>
@@ -714,14 +757,11 @@ let ADMIN_OK = false;                       // この起動セッションで管
 let _unlocks = {};                          // サーバの最新ロック解除記録 {本名:解除ts}（applyMetaで更新。時計非依存の消費判定に使う）
 let _adminUnlocked = false;                 // 名前ロック解除など一時的な解錠フラグ
 // 管理者＝「登録された本名(ADMIN_NAME)」かつ「この端末でパス解錠済み」。未登録の間だけ、名前を選んだ人がパスで登録できる。
-let _maint=false;   // メンテナンスモード：Claudeが修復・システム点検で使う（UIには一切出さない。合言葉つきでのみ有効化）
-window.claudeMaint=async(pass)=>{ try{ const r=await apiPost({action:'checkadminpass',pass}); if(r&&r.ok){ _maint=true; try{ toast('メンテナンスモード ON'); render(); }catch(e){} return true; } }catch(e){} return false; }; // 照合は100%サーバ側（フロントにパスの痕跡を残さない）
-window.claudeMaintOff=()=>{ _maint=false; try{ render(); }catch(e){} return false; };
-const canEdit=()=>!!ME||_maint;   // 追加・編集できるのは「名前を選んでログインした人」だけ（メンテ時のみClaudeが一時許可）
+const canEdit=()=>!!ME;   // 追加・編集できるのは、本人確認済みの名前を選んだ人だけ
 function requireName(){ if(canEdit()) return true; toast('追加・編集するには、まず設定で自分の名前を選んでください'); return false; }
 // AIアシスタントは「名前を選んだ人」だけが使える（未設定ユーザーのAPI利用をフロントで遮断。サーバ側でも二重に拒否）
-function requireNameAI(){ if(ME||_maint) return true; toast('AIアシスタントは、設定で自分の名前を選んだ人だけが使えます'); openCfg(); return false; }
-const isAdmin = () => _maint || (!CFG.url && !ME) || (ADMIN_OK && (ADMIN_NAME==='' || ME===ADMIN_NAME));
+function requireNameAI(){ if(ME) return true; toast('AIアシスタントは、設定で自分の名前を選んだ人だけが使えます'); openCfg(); return false; }
+const isAdmin = () => !!(ADMIN_OK && ME && (ADMIN_NAME==='' || ME===ADMIN_NAME));
 let DEV = LS.get('dev','');   // この端末の識別子（本名の予約に使う）
 if(!DEV){   // localStorageに無い＝新端末 or 揮発。Cookieに退避したdevがあれば引き継ぐ（＝本人確認のやり直しを防ぐ）
   try{ const _c=JSON.parse(CK.get(IDCK)||'null'); if(_c&&_c.dev) DEV=String(_c.dev); }catch(e){}
@@ -731,6 +771,7 @@ if(!DEV){   // localStorageに無い＝新端末 or 揮発。Cookieに退避し�
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
 let CLAIMS  = LS.get('claims', {});        // 本名→端末IDの配列（同じ人の複数端末を許可）
 let PINSET  = LS.get('pinset', {});        // 本名→暗証番号が設定済みか(true/false)。番号そのものはサーバのみが知る
+let ADMIN_PRESENCE = {};                   // 管理者監査から受け取る一時情報。端末保存せず、一般ユーザーの同期にも載せない
 let GOALS   = LS.get('goals', {zemi:'',gen:''}); // ホームに出す目標（管理者が設定・サーバ共有）
 // 【揮発性対策】localStorageが消えていてもCookieに退避した身元があれば復元する。
 // devは無条件で引き継ぐ（同じ端末＝本人確認のやり直しを防ぐ）。名前は「名簿にある名前」だけ復元（汚染防止）。
@@ -858,7 +899,12 @@ const API = {
   async load(){
     _pollN++;
     const useH=_booted&&_sig&&(_pollN%10!==0);   // 10回に1回は全取得（名簿など付随情報の取りこぼし防止）
-    const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+'&me='+encodeURIComponent(ME||'')+(_booted?'':'&boot=1')+(useH?'&h='+encodeURIComponent(_sig):'');
+    // seen/dev/ua はオンライン判定用。旧GASは未知の項目を無視するため後方互換。
+    // 新GASではCacheServiceだけに短時間保持し、名簿・予定・暗証番号のシートには書き込まない。
+    const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+
+      '&me='+encodeURIComponent(ME||'')+'&dev='+encodeURIComponent(DEV||'')+
+      '&ua='+encodeURIComponent(navigator.userAgent||'')+(ME?'&seen=1':'')+
+      (_booted?'':'&boot=1')+(useH?'&h='+encodeURIComponent(_sig):'');
     const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
     const j=await r.json(); if(j&&j.error) throw new Error(j.error);
     _booted=true; if(j&&j.sig) _sig=j.sig;
@@ -1992,6 +2038,24 @@ function renderMemListRO(){
   el.innerHTML=(CFG.members||[]).map(m=>`<div class="memrow"><div class="mn">${esc(m.name)}${DISPLAY[m.name]&&DISPLAY[m.name]!==m.name?`　<span style="color:var(--muted);font-size:12px">（${esc(DISPLAY[m.name])}）</span>`:''}</div>${m.birthday?`<span style="font-size:12px;color:var(--muted)">🎂${esc(bdDisp(m.birthday))}</span>`:''}</div>`).join('')
     ||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
 }
+function setAdminPresence(src){
+  const out={};
+  if(Array.isArray(src)){
+    src.forEach(x=>{ if(x&&x.name) out[String(x.name)]={...x,lastSeen:Number(x.lastSeen||x.seenAt||x.ts||0)}; });
+  }else if(src&&typeof src==='object'){
+    Object.keys(src).forEach(name=>{
+      const x=src[name];
+      out[name]=(x&&typeof x==='object')?{...x,lastSeen:Number(x.lastSeen||x.seenAt||x.ts||0)}:{lastSeen:Number(x||0)};
+    });
+  }
+  ADMIN_PRESENCE=out; // セッションメモリのみ。localStorageへは保存しない
+}
+function onlineInfo(name){
+  if(!isAdmin()) return null;
+  const x=ADMIN_PRESENCE[name]; if(!x) return null;
+  const last=Number(x.lastSeen||0);
+  return (x.online===true || (last>0 && Date.now()-last<=70000)) ? x : null;
+}
 // 管理者パスワードの照合（共有中はサーバで照合＝パスは端末に配られない。端末内のみモードはローカル既定値と比較）
 async function checkAdminPass(p){
   if(p==null||!String(p).trim()) return false;
@@ -2021,6 +2085,13 @@ function paintAdmin(){
     ? 'この端末で管理者メニューを使えます。機種変更しても、新しい端末で自分の名前とパスを入れるだけで引き継げます（特別な操作は不要）。'
     : 'この端末を管理者として登録します（最初に登録した人だけが管理者になります）。';
 }
+// hidden属性を開発者ツールで外されても、未認証セッションでは管理者UIの操作イベントを通さない。
+// 最終的な権限制御は必ずGAS側でも行う（フロントの表示制御だけを認可に使わない）。
+$('#adminWrap').addEventListener('click',e=>{
+  if(isAdmin()) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  toast('管理者認証が必要です');
+},true);
 $('#c_adminBtn').onclick=async()=>{
   if(isAdmin()){ paintAdmin(); return; }
   if(!ME){ toast('先に自分の名前を選んで保存してください'); return; }
@@ -2066,6 +2137,8 @@ $('#c_auditBtn').onclick=async()=>{
     ]);
     const latency=Math.round(performance.now()-t0);
     if(!(r&&r.ok&&r.report)) throw new Error('権限がありません');
+    setAdminPresence(r.report.onlineUsers||r.report.online||r.report.presence||[]);
+    renderMemList(); // 緑のオンライン表示は管理者用リストだけを更新
     renderAudit(r.report, {latency, diag});
   }catch(e){ toast('監査を表示できません：'+e.message); }
   btn.disabled=false; btn.textContent='🛡 セキュリティ監査レポートを表示';
@@ -2075,51 +2148,92 @@ async function clientDiag(){
   let swV='?'; try{ const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text(); swV=(t.match(/zemi-v\d+/)||['?'])[0]; }catch(e){}
   let cacheNames=[]; try{ if(window.caches) cacheNames=await caches.keys(); }catch(e){}
   const dbBytes=(localStorage.getItem('db')||'').length;
-  return { swV, appV:'zemi-v'+APP_V, swMatch: swV===('zemi-v'+APP_V), cacheCount:cacheNames.length, cacheNames:cacheNames.slice(0,4), dbKB:Math.round(dbBytes/1024) };
+  let storageOK=false,cookieOK=false;
+  try{ const k='zemi_diag_'+Date.now(); localStorage.setItem(k,'1'); storageOK=localStorage.getItem(k)==='1'; localStorage.removeItem(k); }catch(e){}
+  try{ CK.set('zemi_diag','1'); cookieOK=CK.get('zemi_diag')==='1'; }catch(e){}
+  return {
+    swV,appV:'zemi-v'+APP_V,swMatch:swV===('zemi-v'+APP_V),
+    cacheCount:cacheNames.length,cacheNames:cacheNames.slice(0,4),dbKB:Math.round(dbBytes/1024),
+    storageOK,cookieOK,network:navigator.onLine?'online':'offline',
+    secure:window.isSecureContext,swControlled:!!navigator.serviceWorker?.controller,
+    notification:('Notification' in window)?Notification.permission:'未対応',
+    pending:pending.length,lastSync:_lastSync||'未同期'
+  };
 }
-function renderAudit(rep, cli){
-  cli=cli||{}; const diag=cli.diag||{}; const lat=cli.latency;
-  $('#audit_meta').textContent='生成: '+(rep.generatedAt||'')+' ／ 管理者デバイス '+(rep.adminDevices||0)+'台';
-  const card=(label,val,sub,color)=>`<div style="flex:1;min-width:104px;background:var(--card,#fff);border:1px solid var(--line,#e5e2da);border-radius:12px;padding:12px 14px">
-      <div style="font-size:12px;color:var(--muted)">${esc(label)}</div>
-      <div style="font-size:24px;font-weight:800;color:${color||'var(--brass-d,#8a6d3b)'};line-height:1.15">${esc(String(val))}</div>
-      ${sub?`<div style="font-size:11px;color:var(--faint)">${esc(sub)}</div>`:''}</div>`;
+function auditList(v){ return Array.isArray(v)?v:[]; }
+function auditDevices(rep){
+  const raw=rep.adminDeviceDetails||rep.adminDevicesDetail||rep.devices||[];
+  if(Array.isArray(raw)) return raw;
+  return raw&&typeof raw==='object'
+    ? Object.keys(raw).map(id=>({id,...(typeof raw[id]==='object'?raw[id]:{lastSeen:raw[id]})}))
+    : [];
+}
+function auditOnline(rep){
+  const raw=rep.onlineUsers||rep.online||rep.presence||[];
+  if(Array.isArray(raw)) return raw;
+  return raw&&typeof raw==='object'
+    ? Object.keys(raw).map(name=>({name,...(typeof raw[name]==='object'?raw[name]:{lastSeen:raw[name]})}))
+    : [];
+}
+function auditCause(log){
+  const raw=[log&&log.reason,log&&log.code,log&&log.action,log&&log.detail].filter(Boolean).join(' ').toLowerCase();
+  if(/bad.?pass|wrong.?pass|パスワード|checkadminpass/.test(raw)) return ['管理者パスワードの不一致','本人の操作か確認し、心当たりがなければ管理者パスワードを変更してください。'];
+  if(/unknown.?dev|unregistered|secret|device|端末/.test(raw)) return ['未登録端末から管理者機能へ接続','自分の新端末なら再認証し、心当たりがなければ端末一覧と時刻を確認してください。'];
+  if(/unauthor|app.?key|合言葉|key/.test(raw)) return ['合言葉または認証情報が不一致','古いURL・古いアプリ・入力間違いがないか確認してください。'];
+  if(/rate|too.?many|429|連続/.test(raw)) return ['短時間に接続が集中','自動再試行や複数タブを閉じ、数分後に再確認してください。'];
+  if(/old.?version|version|版/.test(raw)) return ['古いアプリ版からの書き込み','該当端末でアプリを再読み込みし、最新版へ更新してください。'];
+  return ['サーバが通常と異なる接続として記録','時刻・操作・端末を照合し、心当たりがなければ認証情報を更新してください。'];
+}
+function renderAudit(rep,cli){
+  cli=cli||{}; const diag=cli.diag||{},lat=cli.latency;
+  const devices=auditDevices(rep);
+  const pinNames=auditList(rep.pinNames).length?auditList(rep.pinNames):Object.keys(PINSET||{}).filter(n=>PINSET[n]);
+  const online=auditOnline(rep);
+  const deviceCount=Array.isArray(rep.adminDevices)?rep.adminDevices.length:(Number(rep.adminDevices!=null?rep.adminDevices:devices.length)||0);
+  $('#audit_meta').textContent='生成: '+(rep.generatedAt||'')+' ／ 管理者デバイス '+deviceCount+'台';
+  const card=(key,label,val,sub,color)=>`<button type="button" class="audit-card" data-audit-detail="${esc(key)}">
+    <span class="alabel">${esc(label)}　›</span><span class="avalue" style="${color?'color:'+color:''}">${esc(String(val))}</span>
+    ${sub?`<span class="asub">${esc(sub)}</span>`:''}</button>`;
+  const plain=(label,val,sub,color)=>`<div class="audit-card"><div class="alabel">${esc(label)}</div><div class="avalue" style="${color?'color:'+color:''}">${esc(String(val))}</div>${sub?`<div class="asub">${esc(sub)}</div>`:''}</div>`;
   const sechead=t=>`<div class="sec" style="margin:16px 0 6px;font-size:14px">${esc(t)}</div>`;
-  const ok=(t)=>`<div style="padding:9px 12px;border-radius:8px;background:rgba(46,95,83,.08);color:#2e5f53;font-weight:700;font-size:13px">✅ ${esc(t)}</div>`;
-  const rows=(arr)=>arr.map(s=>`<div style="border-left:3px solid #b0483c;background:rgba(176,72,60,.06);padding:6px 10px;margin-bottom:6px;border-radius:6px;font-size:12px;word-break:break-all">${esc(String(s.detail!==undefined?(s.action+' ／ '+s.when+' ／ '+s.detail):s))}</div>`).join('');
-  // ① 概要
+  const ok=t=>`<div style="padding:9px 12px;border-radius:8px;background:rgba(46,95,83,.08);color:var(--ok);font-weight:700;font-size:13px">✅ ${esc(t)}</div>`;
   let html=`<div style="display:flex;gap:9px;flex-wrap:wrap">
-      ${card('名簿登録数',rep.memberCount,'人')}
-      ${card('暗証番号設定済み',rep.pinCount,'人')}
-      ${card('管理者デバイス',rep.adminDevices,'台')}
-    </div>`;
-  // ② a) データ整合性
-  const ig=rep.integrity||{}; const bad=(ig.badProjects||0)+(ig.badItems||0)+(ig.orphanItems||0);
-  html+=sechead('a) データ整合性')+`<div style="display:flex;gap:9px;flex-wrap:wrap">
-      ${card('プロジェクト',ig.projectCount!=null?ig.projectCount:'—','件')}
-      ${card('予定・やること',ig.itemCount!=null?ig.itemCount:'—','件')}
-      ${card('不整合',bad,'件', bad>0?'#b0483c':'#2e7d32')}
-    </div>`;
-  html+= bad>0
-    ? `<div style="margin-top:8px">${rows(ig.samples||[])}${(ig.samples||[]).length<bad?`<div style="font-size:11px;color:var(--muted)">…ほか ${bad-(ig.samples||[]).length} 件</div>`:''}</div>`
+    ${plain('名簿登録数',rep.memberCount,'人')}
+    ${card('pins','暗証番号設定済み',rep.pinCount!=null?rep.pinCount:pinNames.length,'人')}
+    ${card('devices','管理者デバイス',deviceCount,'台')}
+    ${card('online','現在オンライン',online.length,'人','#2e7d32')}
+  </div><div id="audit_detail" class="audit-detail" hidden></div>`;
+  const ig=rep.integrity||{},bad=(ig.badProjects||0)+(ig.badItems||0)+(ig.orphanItems||0);
+  html+=sechead('データ整合性')+`<div style="display:flex;gap:9px;flex-wrap:wrap">
+    ${plain('プロジェクト',ig.projectCount!=null?ig.projectCount:'—','件')}
+    ${plain('予定・やること',ig.itemCount!=null?ig.itemCount:'—','件')}
+    ${plain('不整合',bad,'件',bad?'#b0483c':'#2e7d32')}</div>`;
+  html+=bad
+    ? `<div style="margin-top:8px">${auditList(ig.samples).map(x=>`<div class="audit-log">${esc(typeof x==='string'?x:JSON.stringify(x))}</div>`).join('')}</div>`
     : `<div style="margin-top:8px">${ok('必須属性の欠落・孤立データはありません')}</div>`;
-  // ③ b) 未許可端末からの不審な接続
-  const sus=rep.suspicious||[];
-  html+=sechead('b) 不審な接続・警告ログ')+ (sus.length ? `<div>${rows(sus)}</div>` : ok('直近50件のログに不審なアクセスはありません'));
-  // ④ c) キャッシュ & レイテンシ
-  const latColor = lat==null?'':(lat<1200?'#2e7d32':(lat<3000?'#a9884f':'#b0483c'));
-  const latLabel = lat==null?'—':(lat<1200?'良好':(lat<3000?'やや遅延':'遅延'));
-  html+=sechead('c) キャッシュ & 通信レイテンシ')+`<div style="display:flex;gap:9px;flex-wrap:wrap">
-      ${card('GAS往復',lat!=null?lat+'ms':'—',latLabel,latColor)}
-      ${card('サーバ内処理',rep.serverMs!=null?rep.serverMs+'ms':'—')}
-      ${card('ローカルDB',diag.dbKB!=null?diag.dbKB+'KB':'—')}
-    </div>
-    <div style="margin-top:8px;font-size:12px;color:var(--muted);line-height:1.8">
-      アプリ版: <b>${esc(diag.appV||('zemi-v'+APP_V))}</b> ／ 配信SW: <b>${esc(diag.swV||'?')}</b>
-      ${diag.swMatch?'<span style="color:#2e7d32;font-weight:700"> ✓ 一致</span>':'<span style="color:#b0483c;font-weight:700"> ⚠ 不一致（再読込で更新）</span>'}<br>
-      キャッシュ保持: <b>${esc(String(diag.cacheCount!=null?diag.cacheCount:'?'))}</b>件 ${diag.cacheNames&&diag.cacheNames.length?'（'+esc(diag.cacheNames.join(', '))+'）':''}
+  const sus=auditList(rep.suspicious);
+  html+=sechead('不審な接続・警告ログ')+(sus.length
+    ? sus.map(s=>{const why=auditCause(s);return `<div class="audit-log"><b>${esc(why[0])}</b>${esc([s.when,s.action,s.detail].filter(Boolean).join(' ／ '))}<small>対処: ${esc(why[1])}</small></div>`;}).join('')
+    : ok('直近のログに不審なアクセスはありません'));
+  const latColor=lat==null?'':(lat<1200?'#2e7d32':lat<3000?'#a9884f':'#b0483c');
+  html+=sechead('通信・端末診断')+`<div style="display:flex;gap:9px;flex-wrap:wrap">
+    ${plain('GAS往復',lat!=null?lat+'ms':'—',lat==null?'未計測':lat<1200?'良好':lat<3000?'やや遅延':'遅延',latColor)}
+    ${plain('サーバ内処理',rep.serverMs!=null?rep.serverMs+'ms':'—','GAS内部')}
+    ${plain('ローカルDB',diag.dbKB!=null?diag.dbKB+'KB':'—','この端末のみ')}</div>
+    <div class="audit-detail" style="margin-top:9px"><b>追加チェック</b><br>
+      ネットワーク: ${esc(diag.network||'?')} ／ HTTPS: ${diag.secure?'✅':'⚠'} ／ ローカル保存: ${diag.storageOK?'✅':'⚠'} ／ Cookie: ${diag.cookieOK?'✅':'⚠'}<br>
+      Service Worker: ${diag.swControlled?'✅制御中':'⚠未制御'} ／ 通知: ${esc(diag.notification||'?')} ／ 未送信: ${esc(String(diag.pending??'?'))}件<br>
+      アプリ: ${esc(diag.appV||'?')} ／ 配信SW: ${esc(diag.swV||'?')} ${diag.swMatch?'✅一致':'⚠不一致（再読込）'} ／ 最終同期: ${esc(diag.lastSync||'未同期')}
     </div>`;
   $('#audit_body').innerHTML=html;
+  const detail=$('#audit_detail');
+  const show=(title,body)=>{ detail.innerHTML=`<h4>${esc(title)}</h4>${body}`; detail.hidden=false; detail.scrollIntoView({block:'nearest'}); };
+  $('#audit_body').querySelectorAll('[data-audit-detail]').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.auditDetail;
+    if(k==='pins') show('暗証番号設定済み',pinNames.length?pinNames.map(n=>`<div>✓ ${esc(n)}</div>`).join(''):'該当者はいません');
+    if(k==='devices') show('登録済み管理者デバイス',devices.length?devices.map((d,i)=>`<div><b>${esc(d.label||d.deviceName||('端末 '+(i+1)))}</b><br><small>ID: ${esc(String(d.id||d.dev||'—').slice(-12))} ／ 最終利用: ${esc(d.lastSeen||d.updatedAt||'—')}<br>${esc(d.ua||d.userAgent||'')}</small></div>`).join('<hr style="border:0;border-top:1px solid var(--line)">'):'サーバ側の端末詳細対応後に表示されます');
+    if(k==='online') show('現在オンライン',online.length?online.map(x=>`<div><span class="online-dot"></span>${esc(x.name||String(x))} ${x.deviceName||x.label?`<small>（${esc(x.deviceName||x.label)}）</small>`:''}</div>`).join(''):'現在オンラインのメンバーはいません');
+  });
   $('#auditsheet').hidden=false;
 }
 $('#auditClose').onclick=()=>$('#auditsheet').hidden=true;
@@ -2181,17 +2295,18 @@ function parseBd(v){ // 「7/16」「7-16」→ 'MM-DD'。空・不正は ''
 }
 const bdDisp=b=>b?`${+b.slice(0,2)}/${+b.slice(3)}`:'';
 function renderMemList(){
-  $('#c_memlist').innerHTML=memEdit.map((m,i)=>`<div class="memrow"><div class="mn"><b>${esc(m.name)}</b></div>
+  $('#c_memlist').innerHTML=memEdit.map((m,i)=>{ const on=onlineInfo(m.name); return `<div class="memrow"><div class="mn">${on?'<span class="online-dot" title="オンライン"></span>':''}<b>${esc(m.name)}</b>${on?'<span class="online-label">オンライン</span>':''}</div>
     <input data-mbd="${i}" value="${esc(bdDisp(m.birthday))}" placeholder="🎂 7/16" style="flex:0 0 86px;padding:7px 8px;font-size:12px">
     <button data-munlock="${i}" title="この人の端末で名前を選び直せるようにする">🔓</button>
-    <button class="mdel" data-mdel="${i}">削除</button></div>`).join('')||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
-  $('#c_memlist').querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{const i=+b.dataset.mdel;if(!confirm(`「${memEdit[i].name}」を削除しますか？\n担当・チームからも外れます。`))return;memEdit.splice(i,1);renderMemList();refreshMeOptions();});
+    <button class="mdel" data-mdel="${i}">削除</button></div>`; }).join('')||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
+  $('#c_memlist').querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{if(!isAdmin())return;const i=+b.dataset.mdel;if(!confirm(`「${memEdit[i].name}」を削除しますか？\n担当・チームからも外れます。`))return;memEdit.splice(i,1);renderMemList();refreshMeOptions();});
   $('#c_memlist').querySelectorAll('[data-mbd]').forEach(inp=>inp.onchange=()=>{
     const i=+inp.dataset.mbd, bd=parseBd(inp.value);
     if(inp.value.trim()&&!bd){ toast('誕生日は「7/16」のように入れてください'); inp.value=bdDisp(memEdit[i].birthday); return; }
     memEdit[i].birthday=bd; inp.value=bdDisp(bd);
   });
   $('#c_memlist').querySelectorAll('[data-munlock]').forEach(b=>b.onclick=async()=>{
+    if(!isAdmin()) return;
     const m=memEdit[+b.dataset.munlock];
     if(!CFG.url){ toast('共有(URL)設定後に使えます'); return; }
     if(!confirm(`${m.name}さんの端末で、名前を選び直せるようにしますか？`)) return;
@@ -2199,7 +2314,7 @@ function renderMemList(){
     catch(e){ toast('解除に失敗しました: '+e.message); }
   });
 }
-$('#c_memaddbtn').onclick=()=>{ const v=$('#c_memadd').value.trim(); if(!v)return; if(memEdit.some(m=>m.name===v)){toast('すでにいます');return;} memEdit.push({name:v,birthday:''}); $('#c_memadd').value=''; renderMemList(); refreshMeOptions(); };
+$('#c_memaddbtn').onclick=()=>{ if(!isAdmin())return; const v=$('#c_memadd').value.trim(); if(!v)return; if(memEdit.some(m=>m.name===v)){toast('すでにいます');return;} memEdit.push({name:v,birthday:''}); $('#c_memadd').value=''; renderMemList(); refreshMeOptions(); };
 $('#c_memadd').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#c_memaddbtn').click();}});
 $('#c_keyon').onchange=()=>{ $('#c_keywrap').hidden=!$('#c_keyon').checked; };
 $('#c_syncnow').onclick=async()=>{
@@ -2626,7 +2741,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='47'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='48'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
