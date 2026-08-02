@@ -822,6 +822,7 @@ const holiday = key => HOLIDAYS[key] || null;
 // 【重要】共有モード（URLあり＝通常）ではseedを絶対に入れない。
 // seedはupdatedAtが「今」になるため、サーバの正データ（チーム分けや削除の記録）にLWWで勝ってしまい、
 // 新しい端末で「チームが消える」「昔の仮タスクが復活する」データ混同を起こしていた（根治済み）。
+const HAD_LOCAL_DB=!!LS.get('db',null);
 let DB = migrate(LS.get('db', null) || (CFG.url ? {projects:[],items:[]} : seed()));
 
 function seed(){
@@ -930,7 +931,13 @@ const ZEMI_GOAL_DETAIL=[
   {k:'行動の種類',v:'インプット　➡　具体行動｜理論・体験'},
   {k:'行動の種類',v:'アウトプット　➡　具体行動｜ゼミ内・ゼミ外'}
 ];
-let syncState='off',pending=[],_lastSync='';
+let syncState='off';
+// 未送信IDは通常の再起動でも失わないよう端末内へ保存し、接続が戻ったら自動再送する。
+// ブラウザによるサイトデータ削除では端末保存自体が消えるため、共有データの本体は必ずGAS側とする。
+const _pendingSaved=LS.get('pending',[]);
+let pending=Array.isArray(_pendingSaved)?_pendingSaved.filter(x=>typeof x==='string'&&x):[];
+let _lastSync='',_lastServerBackup=Number(LS.get('lastServerBackup',0))||0;
+function persistPending(){ LS.set('pending',pending); }
 
 const $=s=>document.querySelector(s);
 const pj=id=>(DB.projects.find(p=>p.id===id&&!p.deleted))||{name:'—',color:'#aba393',teams:[]};
@@ -1295,7 +1302,9 @@ function renderSoon(){
 function renderSync(){
   const s=$('#sync');
   const stCls={ok:'',off:'off',err:'err',auth:'err',busy:'busy'}[syncState]||'off';
-  const stTxt={ok:'同期中',off:'端末内のみ',err:'つながりません',auth:'⚠合言葉が必要（設定から入力）',busy:'同期しています…'}[syncState]||'';
+  const stTxt=syncState==='ok'
+    ?(pending.length?`未送信 ${pending.length}件`:'サーバ保存済み')
+    :({off:'端末内のみ',err:pending.length?`未送信 ${pending.length}件・再接続待ち`:'つながりません',auth:'⚠合言葉が必要（設定から入力）',busy:'同期しています…'}[syncState]||'');
   s.innerHTML=CFG.url?`<span class="st ${stCls}"><span class="led"></span>${stTxt}</span> ・ <button id="opencfg">設定</button>`
     :`<b>この端末の中だけに保存されています</b><br><button id="opencfg">全員で共有する設定をする</button>`;
   $('#opencfg').onclick=openCfg;
@@ -1304,16 +1313,41 @@ function renderSync(){
 // 保存時は必ずidで現物を引き直す（無ければ差し戻す）。これを怠ると「保存できました」と出るのに消える。
 function freshItem(o){ let t=DB.items.find(x=>x.id===o.id); if(!t){ t=o; DB.items.push(t); } return t; }
 function freshPj(o){ let t=DB.projects.find(x=>x.id===o.id); if(!t){ t=o; DB.projects.push(t); } return t; }
-async function commit(ids){ LS.set('db',DB); render(); if(!CFG.url) return; if(ids&&ids.length) ids.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(); }
+async function commit(ids){
+  LS.set('db',DB); render();
+  if(!CFG.url) return;
+  if(ids&&ids.length) ids.forEach(id=>{if(!pending.includes(id))pending.push(id);});
+  persistPending();                 // 通信前に未送信一覧を保存（通常の再起動なら必ず再送）
+  await flush();
+}
 async function flush(force){
   if(!CFG.url||!pending.length) return;
   if(!force && syncState==='busy'){ setTimeout(flush,1500); return; }   // 同期中でも保存が滞留しないよう少し後に自動再送（syncNowの並列呼び出しはforceで直進）
   const ids=pending.splice(0);
+  persistPending();
   const okId=x=>x&&x.id&&x.id!=='undefined'&&x.id!=='null';   // 壊れたidは送らない（データ破損の再発防止）
   const changed={projects:DB.projects.filter(p=>ids.includes(p.id)&&okId(p)),items:DB.items.filter(i=>ids.includes(i.id)&&okId(i))};
   setSync('busy');
-  try{ const merged=await API.merge(changed); if(merged&&merged.projects){DB=migrate(mergeInto(DB,merged));LS.set('db',DB);render();} setSync('ok'); }
-  catch(e){ console.warn('同期失敗',e); ids.forEach(id=>{if(!pending.includes(id))pending.push(id);}); setSync('err'); }
+  try{
+    const merged=await API.merge(changed);
+    if(merged&&merged.projects){DB=migrate(mergeInto(DB,merged));LS.set('db',DB);render();}
+    _lastServerBackup=now(); LS.set('lastServerBackup',_lastServerBackup);
+    persistPending(); setSync('ok');
+  }
+  catch(e){
+    console.warn('同期失敗',e);
+    ids.forEach(id=>{if(!pending.includes(id))pending.push(id);});
+    persistPending(); setSync('err');
+  }
+}
+// 画面終了時は通常のfetchが中断されることがあるため、同じ冪等mergeをsendBeaconでも追加送信する。
+// 成否は次回起動時に通常同期で再確認するので、ここではpendingを消さない。
+function beaconFlush(){
+  if(!CFG.url||!pending.length||!navigator.sendBeacon) return;
+  const ids=[...pending],okId=x=>x&&x.id&&x.id!=='undefined'&&x.id!=='null';
+  const changed={projects:DB.projects.filter(p=>ids.includes(p.id)&&okId(p)),items:DB.items.filter(i=>ids.includes(i.id)&&okId(i))};
+  const body={action:'merge',changed,key:CFG.appKey||'',me:ME||'',v:APP_V};
+  try{ navigator.sendBeacon(CFG.url,new Blob([JSON.stringify(body)],{type:'text/plain;charset=utf-8'})); }catch(e){}
 }
 function setSync(s){ syncState=s; renderSync(); }
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
@@ -2275,6 +2309,7 @@ $('#c_restore').onclick=async()=>{
   LS.set('db',DB);
   const ids=[...projs.map(p=>p.id),...DB.items.map(i=>i.id)];
   ids.forEach(id=>{ if(!pending.includes(id)) pending.push(id); });
+  persistPending();
   toast('送信しています…');
   await flush();
   toast(syncState==='ok'?`送信しました（プロジェクト${projs.length}件・項目${DB.items.length}件）。他の端末は「🔄いま同期」で反映されます`:'送信に失敗しました。通信を確認してもう一度お試しください');
@@ -2693,7 +2728,7 @@ async function syncNow(){
     }
     applyMeta(remote); setSync('ok'); _lastSync=new Date().toLocaleTimeString();
     if(changed) renderSoon();   // 変化があったときだけ描き直す（操作中の「ボタンが効かない」を防ぐ）
-    if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); await flush(true); }
+    if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); persistPending(); await flush(true); }
   }
   catch(e){
     console.warn('読み込み失敗',e); setSync(String(e.message)==='unauthorized'?'auth':'err');
@@ -2734,14 +2769,22 @@ async function boot(){
   render();
   if(!LS.get('tutDone',false)) showTut();   // 初めての人に3枚だけ説明
   if(CFG.url)await syncNow();
+  const restoredFromServer=!HAD_LOCAL_DB&&(DB.projects.length>0||DB.items.length>0);
   // 管理者デバイスのパスワードレス自動認証（この端末にシークレットがあり、登録管理者本人のとき）
   if(CFG.url&&ME&&ADMIN_NAME&&ME===ADMIN_NAME&&adminSecret()){ try{ if(await tryAdminAuto()) ADMIN_OK=true; }catch(e){} }
-  if(CFG.url&&!ME){ openCfg(); toast(_wiped?'データが初期化されたようです。自分の名前を選ぶと、暗証番号で元の予定・担当に安全に復元されます':'まずは自分の名前を選んでください'); } // 各自が自分を選ぶ（消えた端末は再紐付けへ）
+  if(CFG.url&&!ME){
+    openCfg();
+    toast(restoredFromServer
+      ?'共有データはサーバから復元済みです。同じ名前と暗証番号で端末を再登録してください'
+      :(_wiped?'自分の名前と暗証番号を入れると、共有データをサーバから安全に復元できます':'まずは自分の名前を選んでください'));
+  } else if(restoredFromServer){
+    toast('共有データをサーバから復元しました');
+  } // 各自が自分を選ぶ（消えた端末は再紐付けへ）
   checkRecap();
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='48'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='49'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
@@ -2763,7 +2806,8 @@ const APP_V='48'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（�
 // 20秒ごと（画面を見ているときだけ）＋アプリに戻った瞬間。自分の編集は即時送信されるので、これは他人の変更の取り込み用。
 // （見ていない画面は通信しない＝通信量・無料枠の節約。開いた瞬間に必ず同期するので体感は即時）
 setInterval(()=>{ if(CFG.url&&document.visibilityState==='visible')syncNow(); },20000);
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')syncNow(); else beaconFlush(); });
+window.addEventListener('pagehide',beaconFlush);
 window.addEventListener('online',syncNow);
 window.addEventListener('focus',()=>{ if(CFG.url)syncNow(); });
 if('serviceWorker' in navigator){
