@@ -698,9 +698,13 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="sec" style="margin-top:2px">🛡 セキュリティ監査レポート</div>
   <p class="help" id="audit_meta"></p>
   <div id="audit_body"></div>
+  <div class="sec">AI監査ログ</div>
+  <div style="display:flex;gap:8px"><input id="audit_ai_q" maxlength="100" placeholder="ユーザー名・対象IDなど"><button class="no" id="audit_ai_btn" type="button">検索</button></div>
+  <div id="audit_ai_results" class="audit-detail" hidden></div>
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
+<script src="ai-core.js?v=50"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -744,7 +748,7 @@ if((CFG.members||[]).some(m=>['みおり','ゆいの','そうた'].includes(m.na
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
 if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON.stringify(['大翔','山田','佐藤','鈴木','高橋'])){ CFG.members=MEMBERS0.map(m=>({...m})); }
 // メンバーは {name, birthday} に正規化（旧データは文字列配列や nick 付き）
-CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:'',email:''}:{name:m.name||'',birthday:m.birthday||'',email:m.email||''}).filter(m=>m.name);
+CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:'',email:'',aliases:[]}:{...m,name:m.name||'',birthday:m.birthday||'',email:m.email||'',aliases:Array.isArray(m.aliases)?m.aliases:[]}).filter(m=>m.name);
 LS.set('cfg',CFG);
 let ME = LS.get('me', '');
 if(!ME) CFG.appKey='';   // 名前未設定の端末は合言葉を記憶しない＝開くたびに毎回入力を求める（名前を選んだ端末だけ記憶）
@@ -1924,6 +1928,15 @@ $('#pushOff').onclick=disablePush;
 /* ============================================================ AI（Gemini） */
 const AI_PRESETS=['今週やるべきことは？','遅れているタスクは？','各プロジェクトの状況をまとめて','今日の予定は？'];
 let _aiChat=[];   // 会話の履歴 {role:'user'|'model', text, rawtext}（次の質問に文脈が引き継がれる）
+let _aiSessionId='';
+let _aiPlan=null;
+const newAiSession=()=>{ _aiSessionId='s'+Date.now().toString(36)+crypto.getRandomValues(new Uint32Array(2)).join(''); };
+function destroyAiSession(reason){
+  const sid=_aiSessionId;
+  _aiChat=[]; _aiAdds=[]; _aiDels=[]; _aiDones=[]; _aiPlan=null; _aiSessionId='';
+  $('#ai_addwrap').hidden=true; renderAiChat(false);
+  if(sid&&CFG.url) apiPost({action:'aiSessionEnd',sessionId:sid,reason:reason||'closed',dev:DEV}).catch(()=>{});
+}
 function renderAiChat(loading){
   const el=$('#ai_chat');
   el.innerHTML=_aiChat.map(m=>`<div class="${m.role==='user'?'cu':'ca'}">${esc(m.text)}</div>`).join('')
@@ -1933,20 +1946,22 @@ function renderAiChat(loading){
 }
 function openAI(){
   if(!requireNameAI()) return;   // 名前未設定の端末はAIを開けない
+  if(!_aiSessionId) newAiSession();
   $('#ai_quick').innerHTML=AI_PRESETS.map(p=>`<button data-p="${esc(p)}">${esc(p)}</button>`).join('');
   $('#ai_quick').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#ai_q').value=b.dataset.p;askAI();});
   renderAiChat(false);
   $('#aisheet').hidden=false;
 }
-$('#aiClose').onclick=()=>$('#aisheet').hidden=true;
-$('#aiReset').onclick=()=>{ _aiChat=[]; _aiAdds=[]; _aiDels=[]; $('#ai_addwrap').hidden=true; renderAiChat(false); toast('会話をリセットしました'); };
-$('#aisheet').onclick=e=>{if(e.target.id==='aisheet')$('#aisheet').hidden=true};
+$('#aiClose').onclick=()=>{ $('#aisheet').hidden=true; destroyAiSession('closed'); };
+$('#aiReset').onclick=()=>{ destroyAiSession('reset'); newAiSession(); toast('会話をリセットしました'); };
+$('#aisheet').onclick=e=>{if(e.target.id==='aisheet'){ $('#aisheet').hidden=true; destroyAiSession('backdrop'); }};
 $('#aiAsk').onclick=askAI;
 function buildAIContext(){
   const lines=[];
   lines.push('■プロジェクト＆係と進捗');
-  liveProjects().forEach(p=>{
-    const t=liveItems().filter(i=>i.pj===p.id&&i.type==='task');const done=t.filter(i=>i.done).length;
+  const safe=ZemiAI.visibleSnapshot(DB,ME);
+  safe.projects.forEach(p=>{
+    const t=safe.items.filter(i=>i.pj===p.id&&i.type==='task');const done=t.filter(i=>i.done).length;
     lines.push(`- ${p.name}：${done}/${t.length}完了`);
     (p.teams||[]).forEach(tm=>{const tt=t.filter(i=>i.team===tm.name);lines.push(`  ・${tm.name}：${tt.filter(i=>i.done).length}/${tt.length}`);});
   });
@@ -1969,12 +1984,19 @@ async function aiGenerate(x,q){
   // x = partsの配列 か、{role,parts}の会話配列。qは質問の要約（logシート記録用）。
   // AIは常にGASプロキシ経由＝Geminiキー・モデル選択はサーバの中だけ（フロントは鍵を一切持たない・直Google叩き無し）。
   // ※ contents（プロンプト・データ文脈）の構造は従来と完全に同一。コアロジック非破壊。
-  const contents=(Array.isArray(x)&&x[0]&&x[0].role)?x:[{parts:x}];
-  const r=await apiPost({action:'ai',contents,q:q||''}); return r.text||'';
+  const history=_aiChat.slice(-8).map(m=>({role:m.role,text:String(m.text||'').slice(0,1000)}));
+  return apiPost({action:'aiPlan',sessionId:_aiSessionId,q:q||'',history,dev:DEV});
 }
 /* AIの回答から「予定の追加・削除・完了の提案」ブロックを取り出す */
 let _aiAdds=[],_aiDels=[],_aiDones=[];
 function aiExtractAdds(txt){
+  if(txt&&typeof txt==='object'){
+    const plan=ZemiAI.validatePlan(txt);
+    const adds=plan.operations.filter(o=>o.action==='create');
+    const dels=plan.operations.filter(o=>o.action==='delete').map(o=>({id:o.targetId,date:o.date,title:o.title}));
+    const dones=plan.operations.filter(o=>o.action==='complete').map(o=>({id:o.targetId,title:o.title}));
+    return {clean:plan.reply,adds,dels,dones,plan};
+  }
   const m=String(txt||'').match(/```json\s*([\s\S]*?)```/);
   if(!m) return {clean:txt,adds:[],dels:[],dones:[]};
   let adds=[],dels=[],dones=[]; try{ const o=JSON.parse(m[1]); adds=Array.isArray(o.add)?o.add:[]; dels=Array.isArray(o.del)?o.del:[]; dones=Array.isArray(o.done)?o.done:[]; }catch(e){}
@@ -1984,7 +2006,7 @@ function aiExtractAdds(txt){
   dels=dels.filter(d=>d&&(d.id||d.title))
     .map(d=>({id:String(d.id||''),title:String(d.title||'').slice(0,100),date:/^\d{4}-\d{2}-\d{2}$/.test(d.date||'')?d.date:''}));
   dones=dones.filter(d=>d&&(d.id||d.title)).map(d=>({id:String(d.id||''),title:String(d.title||'').slice(0,100)}));
-  return {clean:String(txt).replace(m[0],'').trim(), adds, dels, dones};
+  return {clean:String(txt).replace(m[0],'').trim(), adds, dels, dones,plan:null};
 }
 async function askAI(){
   if(!requireNameAI()) return;   // 名前未設定ならAPIを叩かせない（クイックボタン経由も含めて遮断）
@@ -1993,21 +2015,15 @@ async function askAI(){
   $('#ai_q').value='';
   $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[]; _aiDones=[];
   _aiChat.push({role:'user',text:q}); renderAiChat(true);
-  const sys=`あなたは大学の「水野ゼミ」の予定・タスク管理アシスタントです。以下の現在のデータだけを根拠に、日本語で簡潔に、箇条書き中心で答えてください。今日は${TODAY}です。\n`
-    +`ユーザーが予定・タスクの追加・削除・完了を頼んだら、回答文の最後に次の形式のブロックを1つだけ付けてください（依頼でなければ絶対に付けないこと）：\n`
-    +'```json\n{"add":[{"type":"event","title":"バイト","date":"YYYY-MM-DD","time":"15:00","endTime":"17:00"}],"del":[{"id":"i1234567890123","date":"YYYY-MM-DD"}],"done":[{"id":"i1234567890123"}]}\n```\n'
-    +`typeは予定=event・やること(期限つき)=task。dateは必ずYYYY-MM-DD、時刻はHH:MM（不明なら""）。複数件は配列に全部入れる（「◯◯を全部消して」のような一括依頼は該当する全idを列挙する）。`
-    +`del=削除・done=タスクを完了にする。どちらも必ず下のデータの〔id:～〕のidを使う（くり返し予定の特定の回だけ消すときはdateにその回の日付を入れる。全部消すときはdateにその予定自身の日付）。使わない配列は省略。\n\n${buildAIContext()}`;
-  const contents=[{role:'user',parts:[{text:sys}]},{role:'model',parts:[{text:'わかりました。データを踏まえてお答えします。'}]},
-    ..._aiChat.map(m=>({role:m.role,parts:[{text:m.rawtext||m.text}]}))];
   try{
-    const raw=await aiGenerate(contents,q);
-    const {clean,adds,dels,dones}=aiExtractAdds(raw);
-    _aiChat.push({role:'model',text:clean||((adds.length||dels.length||dones.length)?'予定の変更を提案します。下のボタンで実行できます。':'（回答が空でした）'),rawtext:raw});
+    const response=await aiGenerate(null,q);
+    const raw=response.plan||response;
+    const {clean,adds,dels,dones,plan}=aiExtractAdds(raw); _aiPlan=plan;
+    _aiChat.push({role:'model',text:clean||((adds.length||dels.length||dones.length)?'変更案を確認してください。':'（回答が空でした）')});
     renderAiChat(false);
-    if(adds.length||dels.length||dones.length){
+    if(plan&&plan.operations.length){
       _aiAdds=adds; _aiDels=dels; _aiDones=dones;
-      $('#ai_addbtn').textContent='📅 '+[adds.length?`${adds.length}件追加`:'',dels.length?`${dels.length}件削除`:'',dones.length?`${dones.length}件完了`:''].filter(Boolean).join('・')+'を実行する';
+      $('#ai_addbtn').textContent='📅 '+plan.operations.length+'件の変更を実行する';
       $('#ai_addwrap').hidden=false;
     }
   }catch(e){ _aiChat.push({role:'model',text:'エラー: '+e.message}); renderAiChat(false); }
@@ -2053,6 +2069,25 @@ $('#ai_addbtn').onclick=()=>{
   if(!ids.length){ toast('変更できませんでした'+(delMiss.length?`（見つからず: ${delMiss.join('・')}）`:'（すべて登録済み）')); return; }
   commit(ids);
   toast(`実行しました（追加${ids.length-delCnt-doneCnt}件・削除${delCnt}件・完了${doneCnt}件${delMiss.length?`・見つからず${delMiss.length}件`:''}）`);
+};
+
+// v50: AIが提案した変更はローカルで直接反映せず、GASの権限付きホワイトリストで実行する。
+$('#ai_addbtn').onclick=async()=>{
+  if(!requireName()||!_aiPlan||!_aiPlan.operations.length) return;
+  const ops=_aiPlan.operations;
+  const lines=ops.map(o=>`${o.action==='create'?'＋':o.action==='delete'?'－':o.action==='complete'?'✓':'↻'} ${o.date||''} ${o.title||o.targetId}${o.tentative?'（仮）':''}`).join('\n');
+  if(!confirm(`次の内容を実行します。よろしいですか？\n\n${lines}`)) return;
+  $('#ai_addbtn').disabled=true;
+  try{
+    const r=await apiPost({action:'aiExecute',sessionId:_aiSessionId,operations:ops,dev:DEV});
+    await syncNow();
+    const failed=(r.results||[]).filter(x=>!x.ok);
+    _aiChat.push({role:'model',text:`実行結果: 成功${(r.results||[]).length-failed.length}件・失敗${failed.length}件${failed.length?'（'+failed.map(x=>x.reason).join('、')+'）':''}`});
+    _aiPlan=null; _aiAdds=[]; _aiDels=[]; _aiDones=[]; $('#ai_addwrap').hidden=true; renderAiChat(false);
+    toast(failed.length?'一部を実行できませんでした':'実行し、再読込で確認しました');
+  }catch(e){
+    _aiChat.push({role:'model',text:'実行できませんでした: '+e.message}); renderAiChat(false);
+  }finally{ $('#ai_addbtn').disabled=false; }
 };
 
 /* ============================================================ 設定 */
@@ -2272,6 +2307,14 @@ function renderAudit(rep,cli){
 }
 $('#auditClose').onclick=()=>$('#auditsheet').hidden=true;
 $('#auditsheet').onclick=e=>{ if(e.target.id==='auditsheet') $('#auditsheet').hidden=true; };
+$('#audit_ai_btn').onclick=async()=>{
+  if(!isAdmin())return;
+  const out=$('#audit_ai_results'); out.hidden=false; out.textContent='検索中…';
+  try{
+    const r=await apiPost({action:'aiAuditSearch',sessionId:'admin-audit',query:$('#audit_ai_q').value.trim(),limit:50,dev:DEV,admin:true,secret:adminSecret()});
+    out.innerHTML=(r.rows||[]).map(row=>`<div class="audit-log">${esc(row.slice(0,6).join(' ／ '))}</div>`).join('')||'該当なし';
+  }catch(e){out.textContent='取得できません: '+e.message;}
+};
 $('#c_admemailsave').onclick=async()=>{
   if(!adminSecret()){ toast('管理者デバイスのみ設定できます'); return; }
   const em=$('#c_admemail').value.trim();
@@ -2452,7 +2495,7 @@ $('#cfgOk').onclick=async()=>{
   CFG.appKey=$('#c_keyon').checked?$('#c_key').value.trim():'';
   const wasAdmin=isAdmin();
   if(wasAdmin){ // メンバーは管理者のみ変更可（AIキーはフロントで扱わない＝サーバのGEMINI_KEYのみ）
-    CFG.members=memEdit.map(m=>({name:m.name,birthday:m.birthday||'',email:m.email||''})).filter(m=>m.name);
+    CFG.members=memEdit.map(m=>({...m,name:m.name,birthday:m.birthday||'',email:m.email||'',aliases:Array.isArray(m.aliases)?m.aliases:[]})).filter(m=>m.name);
   }
   CFG.spanArrow=$('#c_span').checked;
   const chosen=$('#c_me').value;
@@ -2669,7 +2712,7 @@ function applyMeta(remote){
   // 名簿（誕生日つき）はサーバが正。管理者が保存すると全員に配られる。
   if(Array.isArray(remote.members)&&remote.members.length){
     const before=JSON.stringify(CFG.members);
-    CFG.members=remote.members.map(m=>({name:String(m.name||''),birthday:String(m.birthday||''),email:String(m.email||'')})).filter(m=>m.name);
+    CFG.members=remote.members.map(m=>({...m,name:String(m.name||''),birthday:String(m.birthday||''),email:String(m.email||''),aliases:Array.isArray(m.aliases)?m.aliases.map(String):[]})).filter(m=>m.name);
     LS.set('cfg',CFG);
     // 設定を開いている最中に名簿が届いたら、名前の選択肢をその場で最新にする（初回起動時の「古い名前しか出ない」対策）
     if(before!==JSON.stringify(CFG.members)&&!$('#cfg').hidden){
@@ -2784,7 +2827,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='49'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='50'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
