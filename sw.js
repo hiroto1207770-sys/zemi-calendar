@@ -1,6 +1,6 @@
 // キャッシュ優先 → 裏で更新。GASの初回応答が遅くても画面が即出る。
 // ＋ Web Push受信（本文はGASの notifyfeed から取得してロック画面に表示）
-const V = 'zemi-v51';
+const V = 'zemi-v52';
 const CORE = ['./', './index.html', './ai-core.js', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -23,7 +23,7 @@ self.addEventListener('fetch', e => {
     // HTMLはネットワーク優先＝アプリを直したら次に開いた時に自動で最新になる（オフライン時はキャッシュ）。
     // 予定・やること等のデータは localStorage / スプレッドシート側なのでこの更新では消えない。
     e.respondWith(
-      fetch(e.request).then(res => {
+      fetch(e.request, { cache: 'no-store' }).then(res => {
         const copy = res.clone();
         caches.open(V).then(c => c.put(e.request, copy));
         return res;

@@ -713,7 +713,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=51"></script>
+<script src="ai-core.js?v=52"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -724,6 +724,9 @@ const LS = {
 };
 const MEM = {};
 const now = () => Date.now();
+// 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
+// apiPost() が未初期化の定数を参照して起動が止まる。
+const APP_V='52'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -2857,6 +2860,12 @@ async function boot(){
   applyLogo();
   render();
   if(!LS.get('tutDone',false)) showTut();   // 初めての人に3枚だけ説明
+  // 新端末は同期完了まで空画面にしない。先に名前・合言葉の設定へ案内し、
+  // 背後で共有データの復元を続ける。
+  if(CFG.url&&!ME){
+    openCfg();
+    toast('まずは自分の名前と合言葉を設定してください');
+  }
   if(CFG.url)await syncNow();
   const restoredFromServer=!HAD_LOCAL_DB&&(DB.projects.length>0||DB.items.length>0);
   // 管理者デバイスのパスワードレス自動認証（この端末にシークレットがあり、登録管理者本人のとき）
@@ -2871,9 +2880,12 @@ async function boot(){
   } // 各自が自分を選ぶ（消えた端末は再紐付けへ）
   checkRecap();
 }
-boot();
+boot().catch(e=>{
+  console.error('起動失敗',e);
+  // 起動途中の例外でも白紙にせず、設定と再同期の入口を必ず残す。
+  try{ render(); setSync('err'); openCfg(); toast('起動時の同期に失敗しました。設定を確認して「今すぐ同期」を押してください'); }catch(_){}
+});
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='51'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
@@ -2885,10 +2897,15 @@ const APP_V='51'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（�
   try{ // 古いキャッシュのHTMLで起動してしまったら、キャッシュを捨てて一度だけ自動リロード
     const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();
     const m=t.match(/zemi-v(\d+)/);
-    if(m && m[1]!==APP_V && sessionStorage.getItem('verReloaded')!==m[1]){
-      sessionStorage.setItem('verReloaded',m[1]);
-      if(window.caches){ const ks=await caches.keys(); for(const k of ks) await caches.delete(k); }
-      location.reload();
+    if(m && m[1]!==APP_V){
+      const key='verReload:'+m[1],attempt=Number(sessionStorage.getItem(key)||0);
+      if(attempt<3){
+        sessionStorage.setItem(key,String(attempt+1));
+        if(window.caches){ const ks=await caches.keys(); for(const k of ks.filter(x=>x.startsWith('zemi-v'))) await caches.delete(k); }
+        if('serviceWorker' in navigator){ const r=await navigator.serviceWorker.getRegistration(); if(r)try{await r.update();}catch(_){} }
+        const u=new URL(location.href);u.searchParams.set('v',m[1]);u.searchParams.set('reload',String(attempt+1));
+        location.replace(u.href);
+      }
     }
   }catch(e){}
 })();

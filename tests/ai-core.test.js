@@ -1,5 +1,7 @@
 const assert=require('node:assert/strict');
 const test=require('node:test');
+const fs=require('node:fs');
+const path=require('node:path');
 const AI=require('../ai-core.js');
 
 test('aliases resolve but ambiguous initials do not auto-resolve',()=>{
@@ -53,4 +55,17 @@ test('existing personal assignment migration keeps only the confirmed member com
   assert.equal(task.done,false);
   assert.equal(AI.migrateTaskCompletion(task,['別の人'],'v51-personal-photo',200),false);
   assert.deepEqual(Object.keys(task.doneBy),['村山美織梨']);
+});
+test('app version is initialized before startup and matches the service worker',()=>{
+  const root=path.resolve(__dirname,'..');
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
+  const appVersion=(html.match(/const APP_V='(\d+)'/)||[])[1];
+  const workerVersion=(sw.match(/const V = 'zemi-v(\d+)'/)||[])[1];
+  assert.ok(appVersion,'APP_V must be declared');
+  assert.equal(workerVersion,appVersion);
+  assert.match(html,new RegExp(`ai-core\\.js\\?v=${appVersion}`));
+  assert.ok(html.indexOf("const APP_V='")<html.indexOf('async function apiPost('));
+  assert.ok(html.indexOf("const APP_V='")<html.indexOf('boot().catch('));
+  assert.match(html,/boot\(\)\.catch\(/);
 });
