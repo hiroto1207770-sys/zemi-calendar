@@ -9,6 +9,71 @@
   const text=v=>String(v==null?'':v).normalize('NFKC').trim();
   const norm=v=>text(v).toLocaleLowerCase('ja').replace(/[\s　・･._\-]/g,'');
   const uniq=a=>[...new Set(a.filter(Boolean))];
+  const memberName=m=>text(typeof m==='string'?m:m&&m.name);
+  function taskTargets(i,members,projects){
+    if(!i||i.type!=='task') return [];
+    if(Array.isArray(i.who)&&i.who.length) return uniq(i.who.map(text));
+    if(i.team){
+      const p=(projects||[]).find(p=>p.id===(i.teamPj||i.pj));
+      const tm=p&&(p.teams||[]).find(t=>t.name===i.team);
+      if(tm) return uniq((tm.members||[]).map(text));
+      if(p&&p.name===i.team) return uniq((p.members||[]).map(text));
+    }
+    return uniq((members||[]).map(memberName));
+  }
+  function completionRecord(v){
+    if(v&&typeof v==='object') return {done:!!v.done,at:Number(v.at)||0};
+    if(typeof v==='number') return {done:v>0,at:Math.abs(v)};
+    return {done:!!v,at:0};
+  }
+  function normalizeDoneBy(v){
+    const out={};
+    if(!v||typeof v!=='object'||Array.isArray(v)) return out;
+    Object.keys(v).forEach(k=>{const n=text(k);if(n)out[n]=completionRecord(v[k]);});
+    return out;
+  }
+  function isIndividualTask(i){return !!i&&i.type==='task'&&i.completionMode==='individual';}
+  function isTaskDoneFor(i,user,members,projects){
+    if(!i||i.type!=='task') return !!(i&&i.done);
+    if(!isIndividualTask(i)) return !!i.done;
+    const u=text(user); if(!u||!taskTargets(i,members,projects).includes(u)) return false;
+    return completionRecord((i.doneBy||{})[u]).done;
+  }
+  function isTaskFullyDone(i,members,projects){
+    if(!i||i.type!=='task') return !!(i&&i.done);
+    if(!isIndividualTask(i)) return !!i.done;
+    const targets=taskTargets(i,members,projects);
+    return !!targets.length&&targets.every(u=>completionRecord((i.doneBy||{})[u]).done);
+  }
+  function taskProgress(i,members,projects){
+    const targets=taskTargets(i,members,projects);
+    if(!isIndividualTask(i)) return {done:i&&i.done?targets.length:0,total:targets.length,targets};
+    return {done:targets.filter(u=>completionRecord((i.doneBy||{})[u]).done).length,total:targets.length,targets};
+  }
+  function setTaskDoneFor(i,user,value,members,projects,at){
+    if(!i||i.type!=='task') return false;
+    const stamp=Number(at)||Date.now();
+    if(!isIndividualTask(i)){i.done=!!value;i.doneAt=i.done?stamp:0;return true;}
+    const u=text(user),targets=taskTargets(i,members,projects);
+    if(!u||!targets.includes(u)) return false;
+    i.doneBy=normalizeDoneBy(i.doneBy);i.doneBy[u]={done:!!value,at:stamp};
+    i.done=isTaskFullyDone(i,members,projects);
+    i.doneAt=i.done?Math.max(...targets.map(n=>completionRecord(i.doneBy[n]).at)):0;
+    return true;
+  }
+  function mergeDoneBy(a,b){
+    const aa=normalizeDoneBy(a),bb=normalizeDoneBy(b),out={...aa};
+    Object.keys(bb).forEach(k=>{if(!out[k]||completionRecord(bb[k]).at>=completionRecord(out[k]).at)out[k]=bb[k];});
+    return out;
+  }
+  function migrateTaskCompletion(i,completedMembers,marker,at){
+    if(!i||i.type!=='task'||!marker||i.completionMigration===marker) return false;
+    const stamp=Number(at)||Date.now(),doneBy={};
+    uniq((completedMembers||[]).map(text)).forEach(n=>{doneBy[n]={done:true,at:stamp};});
+    i.completionMode='individual';i.doneBy=doneBy;i.done=false;i.doneAt=0;
+    i.completionMigration=marker;i.updatedAt=Math.max(stamp,(Number(i.updatedAt)||0)+1);
+    return true;
+  }
   function memberTerms(m){
     return uniq([m.name,m.displayName,m.display,m.realName,m.kana,m.hiragana,m.nickname,m.nick,...(Array.isArray(m.aliases)?m.aliases:[])].map(text));
   }
@@ -62,8 +127,10 @@
   }
   function duplicates(op,items){return (items||[]).filter(i=>!i.deleted&&i.type===(op.type||'event')&&norm(i.title)===norm(op.title)&&i.date===op.date&&(i.time||'')===(op.time||''));}
   function localSummary(db,user,today){
-    const s=visibleSnapshot(db,user), open=s.items.filter(i=>i.type==='task'&&!i.done), overdue=open.filter(i=>i.date&&i.date<today);
+    const s=visibleSnapshot(db,user),members=db.members||[],projects=db.projects||[];
+    const open=s.items.filter(i=>i.type==='task'&&!isTaskDoneFor(i,user,members,projects)), overdue=open.filter(i=>i.date&&i.date<today);
     return {projectCount:s.projects.length,itemCount:s.items.length,openTaskCount:open.length,overdueCount:overdue.length};
   }
-  return {ACTIONS,normalize:norm,memberTerms,resolveName,canSeeItem,visibleSnapshot,validatePlan,duplicates,localSummary};
+  return {ACTIONS,normalize:norm,memberTerms,resolveName,canSeeItem,visibleSnapshot,validatePlan,duplicates,localSummary,
+    taskTargets,normalizeDoneBy,isIndividualTask,isTaskDoneFor,isTaskFullyDone,taskProgress,setTaskDoneFor,mergeDoneBy,migrateTaskCompletion};
 });

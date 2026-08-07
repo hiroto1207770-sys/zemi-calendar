@@ -161,6 +161,7 @@ button.teamline:active{opacity:.6}
 .item .bar{position:absolute;left:0;top:0;bottom:0;width:3px}
 .item .check{flex:0 0 auto;width:22px;height:22px;border:2px solid var(--line);border-radius:7px;margin-top:1px;display:grid;place-items:center;color:transparent;font-size:12px;font-weight:900;background:var(--card)}
 .item .check.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.item .check:disabled{opacity:.35;cursor:not-allowed}
 .item .tm{flex:0 0 auto;font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;border-radius:6px;padding:3px 7px;color:#fff;margin-top:1px;min-width:42px;text-align:center;line-height:1.25}
 .item .body{flex:1;min-width:0}
 .item .t{font-weight:600;word-break:break-word;letter-spacing:.01em}
@@ -489,6 +490,14 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div id="w_team" hidden><label>チームを選ぶ</label><select id="f_team"></select></div>
   <div id="w_who"><label id="whoLabel">担当（任意）</label><div class="whopick" id="f_who"></div></div>
   <p class="help" id="visHelp"></p>
+  <div id="w_completion">
+    <label>完了チェックの扱い</label>
+    <div class="seg" id="f_completion">
+      <button type="button" data-cm="individual" class="on">各自で完了</button>
+      <button type="button" data-cm="shared">まとめて完了</button>
+    </div>
+    <p class="help" id="completionHelp"></p>
+  </div>
   <label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input type="checkbox" id="f_imp" style="width:auto">★ 重要（目立たせる）</label>
   <div class="cmts" id="cmtWrap" hidden>
     <div class="sec">コメント <span class="cnt" id="cmtCnt">0</span></div>
@@ -704,7 +713,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=50"></script>
+<script src="ai-core.js?v=51"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -850,6 +859,17 @@ function seed(){
     ]
   };
 }
+const PERSONAL_PHOTO_TASK_ID='i1784377321420';
+const PERSONAL_PHOTO_TASK_TITLE='夏休み課題個人写メールin登戸';
+const PERSONAL_PHOTO_MIGRATION='v51-personal-photo-miori';
+function migrateKnownTaskCompletion(i,t){
+  const compact=String(i.title||'').replace(/[\s　]/g,'');
+  if(i.id!==PERSONAL_PHOTO_TASK_ID||compact!==PERSONAL_PHOTO_TASK_TITLE)return;
+  if(ZemiAI.migrateTaskCompletion(i,['村山美織梨'],PERSONAL_PHOTO_MIGRATION,t)){
+    const q=LS.get('completionMigrationPending',[]),ids=Array.isArray(q)?q:[];
+    if(!ids.includes(i.id))ids.push(i.id);LS.set('completionMigrationPending',ids);
+  }
+}
 function migrate(db){
   if(!db||!db.projects) db=seed();
   const t=now();
@@ -858,14 +878,18 @@ function migrate(db){
     teams=teams.map((tm,i)=> typeof tm==='string' ? {name:tm,color:COLORS[i%COLORS.length],members:[]} : {name:tm.name||'',color:tm.color||COLORS[i%COLORS.length],members:Array.isArray(tm.members)?tm.members:[]});
     return {color:COLORS[pi%COLORS.length],updatedAt:t,deleted:false,done:false,...p,teams,members:Array.isArray(p.members)?p.members:[]};
   });
-  db.items=(db.items||[]).map(i=>({
-    who:[],team:'',teamPj:'',other:'',visibility:'all',important:false,note:'',remind:'',done:false,doneAt:0,comments:[],rep:'none',days:[],until:'',endTime:'',endDate:'',memoCat:'',skip:[],notes:{},createdBy:'',updatedAt:t,deleted:false,...i,
+  db.items=(db.items||[]).map(i=>{
+    const out={
+    who:[],team:'',teamPj:'',other:'',visibility:'all',important:false,note:'',remind:'',done:false,doneAt:0,completionMode:'shared',doneBy:{},comments:[],rep:'none',days:[],until:'',endTime:'',endDate:'',memoCat:'',skip:[],notes:{},createdBy:'',updatedAt:t,deleted:false,...i,
     who:Array.isArray(i.who)?i.who:(i.who?[i.who]:[]),
+    completionMode:i.completionMode==='individual'?'individual':'shared',
+    doneBy:ZemiAI.normalizeDoneBy(i.doneBy),
     days:Array.isArray(i.days)?i.days:[],
     comments:Array.isArray(i.comments)?i.comments:[],
     skip:Array.isArray(i.skip)?i.skip:[],
     notes:(i.notes&&typeof i.notes==='object'&&!Array.isArray(i.notes))?i.notes:{}
-  }));
+    };migrateKnownTaskCompletion(out,t);return out;
+  });
   return db;
 }
 
@@ -919,8 +943,28 @@ const API = {
 };
 function mergeInto(local,remote){
   const byId=a=>{const m={};(a||[]).forEach(x=>m[x.id]=x);return m;};
-  function mrg(a,b){const ma=byId(a),mb=byId(b),out={};Object.keys(ma).forEach(id=>out[id]=ma[id]);Object.keys(mb).forEach(id=>{if(!out[id]||(mb[id].updatedAt||0)>=(out[id].updatedAt||0))out[id]=mb[id];});return Object.values(out);}
-  return {projects:mrg(local.projects,remote.projects),items:mrg(local.items,remote.items)};
+  function mrg(a,b,isItems){
+    const ma=byId(a),mb=byId(b),out={};Object.keys(ma).forEach(id=>out[id]=ma[id]);
+    Object.keys(mb).forEach(id=>{
+      const localItem=out[id],remoteItem=mb[id];
+      let chosen=!localItem||(remoteItem.updatedAt||0)>=(localItem.updatedAt||0)?remoteItem:localItem;
+      if(isItems&&localItem&&remoteItem&&localItem.completionMode==='individual'&&remoteItem.completionMode==='individual'){
+        chosen={...chosen,doneBy:ZemiAI.mergeDoneBy(localItem.doneBy,remoteItem.doneBy)};
+      }
+      out[id]=chosen;
+    });return Object.values(out);
+  }
+  return {projects:mrg(local.projects,remote.projects,false),items:mrg(local.items,remote.items,true)};
+}
+// 同じタスクを別メンバーがほぼ同時に完了しても、メンバー別の新しい記録を合成して次の同期でサーバへ戻す。
+function completionRepairIds(local,remote){
+  const rm={};(remote.items||[]).forEach(i=>rm[i.id]=i);
+  const sig=v=>{const n=ZemiAI.normalizeDoneBy(v);return Object.keys(n).sort().map(k=>k+':'+Number(n[k].done)+':'+n[k].at).join('|');};
+  return (local.items||[]).filter(i=>{
+    const r=rm[i.id];if(!r||i.completionMode!=='individual'||r.completionMode!=='individual')return false;
+    const merged=ZemiAI.mergeDoneBy(i.doneBy,r.doneBy);
+    return sig(merged)!==sig(r.doneBy);
+  }).map(i=>i.id);
 }
 
 /* ============================================================ 状態 */
@@ -938,8 +982,9 @@ const ZEMI_GOAL_DETAIL=[
 let syncState='off';
 // 未送信IDは通常の再起動でも失わないよう端末内へ保存し、接続が戻ったら自動再送する。
 // ブラウザによるサイトデータ削除では端末保存自体が消えるため、共有データの本体は必ずGAS側とする。
-const _pendingSaved=LS.get('pending',[]);
-let pending=Array.isArray(_pendingSaved)?_pendingSaved.filter(x=>typeof x==='string'&&x):[];
+const _pendingSaved=LS.get('pending',[]),_completionMigrationPending=LS.get('completionMigrationPending',[]);
+let pending=[...new Set([...(Array.isArray(_pendingSaved)?_pendingSaved:[]),...(Array.isArray(_completionMigrationPending)?_completionMigrationPending:[])].filter(x=>typeof x==='string'&&x))];
+LS.set('completionMigrationPending',[]);
 let _lastSync='',_lastServerBackup=Number(LS.get('lastServerBackup',0))||0;
 function persistPending(){ LS.set('pending',pending); }
 
@@ -949,7 +994,11 @@ const liveProjects=()=>DB.projects.filter(p=>!p.deleted);
 const activeProjects=()=>DB.projects.filter(p=>!p.deleted&&!p.done); // 進行中のみ（予定の登録先・フィルタ・進捗はこちら）
 const liveItems=()=>DB.items.filter(i=>!i.deleted);
 const dleft=d=>Math.round((new Date(d+'T00:00')-new Date(TODAY+'T00:00'))/86400000);
-const isMine=i=>ME&&i.who&&i.who.includes(ME);
+const taskTargets=i=>ZemiAI.taskTargets(i,CFG.members,DB.projects);
+const taskDone=i=>ZemiAI.isTaskDoneFor(i,ME,CFG.members,DB.projects);
+const taskFullyDone=i=>ZemiAI.isTaskFullyDone(i,CFG.members,DB.projects);
+const taskProgress=i=>ZemiAI.taskProgress(i,CFG.members,DB.projects);
+const isMine=i=>!!ME&&(i.type==='task'?taskTargets(i).includes(ME):!!(i.who&&i.who.includes(ME)));
 // 公開範囲：'members' は担当に入れた人（と作成者）だけの画面に表示（表示上の絞り込み）
 // チームのメンバーか（チーム未登録メンバーの場合は作成者・担当者のみ）
 // チーム名からメンバーを引く。チーム分けの無い係は「係名＝係全体のチーム」として担当メンバーを返す
@@ -1045,8 +1094,8 @@ function renderHome(){
   const el=$('#v-home');
   const d=new Date();const w='日月火水木金土'[d.getDay()];
   const baseTasks=liveItems().filter(i=>i.type==='task'&&(!filter||i.pj===filter)&&teamOk(i)&&canSee(i)&&(!mineOnly||isMine(i)));
-  const openTasks=baseTasks.filter(i=>!i.done);
-  const doneTasks=baseTasks.filter(i=>i.done);
+  const openTasks=baseTasks.filter(i=>!taskDone(i));
+  const doneTasks=baseTasks.filter(i=>taskDone(i));
   const overdue=openTasks.filter(i=>dleft(i.date)<0);
   const todayList=itemsOn(TODAY);
   const week=openTasks.filter(i=>{const n=dleft(i.date);return n>=0&&n<=7;}).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1108,14 +1157,14 @@ function renderHome(){
 function progRow(p,withActions){
   // 進捗の集計は全員に見せる（個人向け「個人指定」タスクは除外、チームのタスクは件数として含む）
   const tasks=liveItems().filter(i=>i.pj===p.id&&i.type==='task'&&(i.visibility!=='members'||canSee(i)));
-  const done=tasks.filter(i=>i.done).length,pct=tasks.length?Math.round(done/tasks.length*100):0;
+  const done=tasks.filter(taskFullyDone).length,pct=tasks.length?Math.round(done/tasks.length*100):0;
   let teamHtml='';
   if((p.teams||[]).length){
     // チームは普段は隠し、▽で展開（タスクの％アコーディオンと同じ操作感）
     const topen=openTeam===p.id;
     let lines='';
     (p.teams||[]).forEach(tm=>{
-      const tt=tasks.filter(i=>i.team===tm.name);const td=tt.filter(i=>i.done).length;
+      const tt=tasks.filter(i=>i.team===tm.name);const td=tt.filter(taskFullyDone).length;
       const tp=tt.length?Math.round(td/tt.length*100):0;
       lines+=`<button class="teamline" data-tteam="${p.id}::${esc(tm.name)}">
         <span class="tn"><i style="background:${tm.color}"></i>${esc(tm.name)}</span>
@@ -1129,8 +1178,8 @@ function progRow(p,withActions){
   const open=openProg===p.id;
   let taskHtml='';
   if(open){
-    const und=tasks.filter(i=>!i.done&&canSee(i)), dn=tasks.filter(i=>i.done&&canSee(i));
-    const row=i=>`<button class="pt ${i.done?'dn':''}" data-open="${i.id}"><span class="st">${i.done?'✅':'☐'}</span><span class="nm">${esc(i.title)}</span><span class="dt">${esc((i.date||'').slice(5).replace('-','/'))}</span></button>`;
+    const und=tasks.filter(i=>!taskDone(i)&&canSee(i)), dn=tasks.filter(i=>taskDone(i)&&canSee(i));
+    const row=i=>{const d=taskDone(i);return `<button class="pt ${d?'dn':''}" data-open="${i.id}"><span class="st">${d?'✅':'☐'}</span><span class="nm">${esc(i.title)}</span><span class="dt">${esc((i.date||'').slice(5).replace('-','/'))}</span></button>`;};
     taskHtml=`<div class="progtasks">`
       +(und.length?`<div class="sub">未完了 ${und.length}</div>`+und.map(row).join(''):'')
       +(dn.length?`<div class="sub">完了 ${dn.length}</div>`+dn.map(row).join(''):'')
@@ -1180,7 +1229,8 @@ function renderCal(){
         if(spans&&i.type==='event'&&prevS.has(sigOf(i)))
           return `<span class="spanbar ${nextS.has(sigOf(i))?'':'end'}" style="background:${c}"></span>`; // 2日目以降＝つなぎの帯
         const isStart=spans&&i.type==='event'&&nextS.has(sigOf(i));
-        return `<span class="pill ${i.type==='event'?'ev':''} ${isStart?'spanS':''} ${i.done?'done':''}" style="${i.type==='event'?`--pc:${c}`:`background:${c}`}">${esc(i.title)}${isStart?' ➡':''}</span>`;
+        const d=i.type==='task'?taskDone(i):!!i.done;
+        return `<span class="pill ${i.type==='event'?'ev':''} ${isStart?'spanS':''} ${d?'done':''}" style="${i.type==='event'?`--pc:${c}`:`background:${c}`}">${esc(i.title)}${isStart?' ➡':''}</span>`;
       }).join('')}
       ${list.length>cap?`<span class="more">+${list.length-cap}</span>`:''}
     </button>`;
@@ -1221,11 +1271,11 @@ function renderDay(){
 const SF_LABEL={open:'未完了のみ',overdue:'期限超過のみ',done:'完了済みのみ'};
 function renderTodo(){
   let list=liveItems().filter(i=>i.type==='task'&&(!filter||i.pj===filter)&&teamOk(i)&&canSee(i)&&(!mineOnly||isMine(i)));
-  if(statusFilter==='open')         list=list.filter(i=>!i.done);
-  else if(statusFilter==='overdue') list=list.filter(i=>!i.done&&dleft(i.date)<0);
-  else if(statusFilter==='done')    list=list.filter(i=>i.done);
-  else                              list=list.filter(i=>showDone||!i.done);
-  list.sort((a,b)=>(a.done-b.done)||a.date.localeCompare(b.date));
+  if(statusFilter==='open')         list=list.filter(i=>!taskDone(i));
+  else if(statusFilter==='overdue') list=list.filter(i=>!taskDone(i)&&dleft(i.date)<0);
+  else if(statusFilter==='done')    list=list.filter(i=>taskDone(i));
+  else                              list=list.filter(i=>showDone||!taskDone(i));
+  list.sort((a,b)=>(Number(taskDone(a))-Number(taskDone(b)))||a.date.localeCompare(b.date));
   const note=statusFilter?`<div class="statusnote">絞り込み中：${SF_LABEL[statusFilter]}<button id="sfClear">✕ 解除</button></div>`:'';
   $('#todoList').innerHTML=note+(list.length?list.map(i=>card(i)).join(''):`<div class="empty">該当するやることはありません</div>`);
   const c=$('#sfClear'); if(c)c.onclick=()=>{statusFilter=null;render();};
@@ -1248,8 +1298,9 @@ function renderPj(){
 
 function card(i,dateKey){
   const p=catOf(i),key=dateKey||i.date,n=dleft(key);
+  const done=i.type==='task'?taskDone(i):!!i.done;
   let cls='',lab='';
-  if(i.type==='task'&&!i.done){
+  if(i.type==='task'&&!done){
     if(n<0){cls='over';lab=`${-n}日超過`} else if(n===0){cls='today';lab='今日'}
     else if(n<=7){cls='soon';lab=`あと${n}日`} else {lab=`あと${n}日`}
   }
@@ -1258,16 +1309,19 @@ function card(i,dateKey){
   const cc=(i.comments&&i.comments.length)?`<span class="cbadge">💬${i.comments.length}</span>`:'';
   const whoHtml=(i.who||[]).map(x=>`<span class="who ${x===ME?'me':''}">${esc(dispName(x))}</span>`).join('');
   const teamHtml=i.team?`<span class="tmg" style="background:${teamColor(i.teamPj||i.pj,i.team)}">${esc(i.team)}</span>`:'';
+  const cp=i.type==='task'&&i.completionMode==='individual'?taskProgress(i):null;
+  const completionHtml=cp?`<span class="cbadge">各自 ${cp.done}/${cp.total}完了</span>`:'';
+  const canCheck=i.type!=='task'||i.completionMode!=='individual'||taskTargets(i).includes(ME);
   const on=(i.notes&&i.notes[key])||'';                       // この回だけのメモ
   const onUrl=on?String(on).match(/https?:\/\/\S+/):null;
-  return `<div class="item ${i.done?'done':''}" data-id="${i.id}" data-date="${key}">
+  return `<div class="item ${done?'done':''}" data-id="${i.id}" data-date="${key}">
     <span class="bar" style="background:${p.color}"></span>
-    ${i.type==='task'?`<button class="check ${i.done?'on':''}" data-done="${i.id}">✓</button>`:`<span class="tm" style="background:${p.color}">${i.time||'終日'}</span>`}
+    ${i.type==='task'?`<button class="check ${done?'on':''}" ${canCheck?`data-done="${i.id}"`:'disabled title="担当外のため完了できません"'}>✓</button>`:`<span class="tm" style="background:${p.color}">${i.time||'終日'}</span>`}
     <div class="body">
       <div class="t">${i.important?'<span style="color:var(--brass)">★</span> ':''}${esc(i.title)}</div>
       <div class="meta">
         <span class="pj" style="color:${p.color}">${esc(p.name)}</span>
-        ${teamHtml}${whoHtml}
+        ${teamHtml}${whoHtml}${completionHtml}
         ${i.visibility==='members'?'<span class="cbadge">🔒関係者</span>':''}
         <span>${key.slice(5).replace('-','/')}${i.type==='event'&&i.endDate&&i.endDate>i.date?'〜'+i.endDate.slice(5).replace('-','/'):''}</span>
         ${i.type==='event'&&i.time&&i.endTime?`<span>${i.time}〜${i.endTime}</span>`:''}
@@ -1280,7 +1334,12 @@ function card(i,dateKey){
     </div></div>`;
 }
 function bind(sc){
-  document.querySelectorAll(sc+' [data-done]').forEach(b=>b.onclick=(e)=>{e.stopPropagation();if(!requireName())return;const i=DB.items.find(x=>x.id===b.dataset.done);i.done=!i.done;i.doneAt=i.done?now():0;i.updatedAt=now();commit([i.id]);});
+  document.querySelectorAll(sc+' [data-done]').forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();if(!requireName())return;
+    const i=DB.items.find(x=>x.id===b.dataset.done),was=taskDone(i);
+    if(!ZemiAI.setTaskDoneFor(i,ME,!was,CFG.members,DB.projects,now())){toast('このやることの担当者ではありません');return;}
+    i.updatedAt=now();commit([i.id]);
+  });
   // カードのどこをタップしても開ける（チェック・リンクは除く）
   document.querySelectorAll(sc+' .item[data-id]').forEach(el=>el.onclick=e=>{
     if(e.target.closest('[data-done]')||e.target.closest('a')) return;
@@ -1363,8 +1422,15 @@ function toast(m,undoFn){ const t=$('#toast');
   t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),undoFn?8000:1800); }
 
 /* ============================================================ 入力シート */
-let kind='task',pickedWho=[],pickedDays=[],vis='all';
+let kind='task',pickedWho=[],pickedDays=[],vis='all',completionMode='individual';
 const DOW=['日','月','火','水','木','金','土'];
+function paintCompletion(){
+  document.querySelectorAll('#f_completion button').forEach(b=>b.classList.toggle('on',b.dataset.cm===completionMode));
+  $('#completionHelp').textContent=completionMode==='individual'
+    ?'担当者それぞれにチェックを保存します。誰かが完了しても、ほかの人の未完了は残ります。'
+    :'1人がチェックすると、このやることを担当者全員の完了として扱います。共同作業の完了確認向けです。';
+}
+document.querySelectorAll('#f_completion button').forEach(b=>b.onclick=()=>{completionMode=b.dataset.cm;paintCompletion();});
 function paintVis(){
   document.querySelectorAll('#f_vis button').forEach(b=>b.classList.toggle('on',b.dataset.v===vis));
   fillTeamSelect($('#f_pj').value,editing?editing.team:'');
@@ -1425,6 +1491,7 @@ function setKind(k){
   document.querySelectorAll('#kind button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
   $('#w_time').hidden=k!=='event'; $('#w_edate').hidden=k!=='event'; $('#w_rep').hidden=k!=='event'; $('#w_who').hidden=(vis!=='members');
   $('#w_alsotask').hidden=k!=='event';   // 既存の予定の編集時にも「やることにも追加」できる
+  $('#w_completion').hidden=k!=='task';
   $('#l_date').textContent=k==='task'?'期限':'日付';
   updateRepDays();
   fillTeamSelect($('#f_pj').value, editing&&editing.team?((editing.teamPj||editing.pj)+'::'+editing.team):'');
@@ -1465,6 +1532,7 @@ function openSheet(id,dateKey){
   $('#f_other').value=editing?.other||'';
   $('#w_other').hidden=$('#f_pj').value!=='__other__';
   vis=editing?(editing.visibility==='members'?'members':(editing.team?'team':'all')):'all'; paintVis();
+  completionMode=editing&&editing.type==='task'?(editing.completionMode==='individual'?'individual':'shared'):'individual';paintCompletion();
   $('#f_imp').checked=!!(editing&&editing.important);
   setKind(editing?editing.type:'task');
   pickedWho=editing?[...(editing.who||[])]:[]; paintWho();
@@ -1516,6 +1584,7 @@ function applySugg(id){
   vis=s.visibility==='members'?'members':(s.team?'team':'all'); paintVis();
   fillTeamSelect($('#f_pj').value, s.team?((s.teamPj||s.pj)+'::'+s.team):'');
   pickedWho=[...(s.who||[])]; paintWho();
+  completionMode=s.type==='task'&&s.completionMode==='shared'?'shared':'individual';paintCompletion();
   $('#f_time').value=s.time||''; $('#f_end').value=s.endTime||'';
   if(s.type==='event'){ $('#f_allday').checked=!s.time; updateAllday(); }
   $('#f_note').value=s.note||''; $('#f_remind').value=s.remind||'';
@@ -1560,6 +1629,7 @@ $('#save').onclick=()=>{
     time:isEv&&!allday?$('#f_time').value:'', endTime:isEv&&!allday?$('#f_end').value:'',
     who:vis==='members'?pickedWho.slice():[],team:tsp[1]||'',teamPj:tsp[1]?tsp[0]:'',
     visibility:vis==='members'?'members':'all', important:$('#f_imp').checked,
+    completionMode:isEv?'shared':completionMode,
     rep, days:(rep==='weekly'||rep==='biweekly')?pickedDays.slice():[],
     until:isEv?$('#f_until').value:'',note:$('#f_note').value.trim(),remind:$('#f_remind').value,updatedAt:now()};
   // 二重登録ガード：同じ内容名・日付・時刻がすでにあれば確認（同期の遅れで古い画面を見て再追加した場合の保険）
@@ -1568,7 +1638,17 @@ $('#save').onclick=()=>{
     if(dup&&!confirm('同じ内容名・同じ日付のものがすでに登録されています。\nそれでも追加しますか？')) return;
   }
   let id;
-  if(editing){const t=freshItem(editing);Object.assign(t,o);id=t.id;} else {id='i'+now();DB.items.push({id,done:false,doneAt:0,createdBy:ME,comments:[],skip:[],notes:{},deleted:false,...o});}
+  if(editing){
+    const current=freshItem(editing),previousMode=current.completionMode==='individual'?'individual':'shared';
+    const wasFullyDone=taskFullyDone(current);Object.assign(current,o);id=current.id;
+    if(kind==='task'&&previousMode!==completionMode){
+      current.doneBy={};
+      // 方式変更時に「誰が押したか」を推測しない。各自方式へ変えた場合は全員を未完了に戻す。
+      current.done=completionMode==='shared'?wasFullyDone:false;
+      current.doneAt=current.done?now():0;
+    }
+    if(kind!=='task'){current.done=false;current.doneAt=0;current.doneBy={};}
+  } else {id='i'+now();DB.items.push({id,done:false,doneAt:0,doneBy:{},createdBy:ME,comments:[],skip:[],notes:{},deleted:false,...o});}
   // くり返し予定の「この回だけのメモ」
   const rec2=DB.items.find(x=>x.id===id);
   if(rec2&&editing&&!$('#w_onote').hidden&&editingDate){
@@ -1582,7 +1662,7 @@ $('#save').onclick=()=>{
     const tid='i'+(now()+1);
     DB.items.push({id:tid,type:'task',pj:o.pj,other:o.other,title:o.title,date:o.date,time:'',endTime:'',who:o.who.slice(),
       team:o.team,teamPj:o.teamPj,visibility:o.visibility,important:o.important,rep:'none',days:[],until:'',note:o.note,
-      remind:o.remind,skip:[],notes:{},done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,updatedAt:now()+1});
+      remind:o.remind,skip:[],notes:{},completionMode:'individual',doneBy:{},done:false,doneAt:0,createdBy:ME,comments:[],deleted:false,updatedAt:now()+1});
     extra.push(tid);
   }
   $('#sheet').hidden=true;sel=o.date;toast(editing?'更新しました':(extra.length?'予定とやることに追加しました':'追加しました'));commit([id,...extra]);
@@ -1758,7 +1838,8 @@ $('#s_q').addEventListener('input',()=>{
         <div class="rm"><i style="background:${memoColor(i.memoCat||'ゼミ')}"></i>メモ / ${esc(i.memoCat||'ゼミ')}</div></div></div>`;
     }
     const p=catOf(i);
-    return `<div class="resrow" data-open="${i.id}"><div class="rc"><div class="rt">${i.type==='event'?'📅 ':i.done?'✓ ':'☐ '}${esc(i.title)}</div>
+    const d=i.type==='task'?taskDone(i):!!i.done;
+    return `<div class="resrow" data-open="${i.id}"><div class="rc"><div class="rt">${i.type==='event'?'📅 ':d?'✓ ':'☐ '}${esc(i.title)}</div>
       <div class="rm"><i style="background:${p.color}"></i>${esc(p.name)}${i.team?' / '+esc(i.team):''} ・ ${esc(i.date.slice(5).replace('-','/'))}</div></div></div>`;
   }).join(''):`<div class="empty">見つかりませんでした</div>`;
   $('#s_res').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{$('#search').hidden=true;openSheet(b.dataset.open);});
@@ -1842,7 +1923,7 @@ $('#memosheet').onclick=e=>{if(e.target.id==='memosheet')$('#memosheet').hidden=
 function upcoming(days){
   const out=[];const start=new Date(TODAY+'T00:00');
   for(let k=0;k<=days;k++){const d=new Date(start);d.setDate(start.getDate()+k);const key=ymd(d);
-    liveItems().forEach(i=>{ if(canSee(i)&&occursOn(i,key)&&(i.type==='event'||(i.type==='task'&&!i.done))) out.push({i,key}); });
+    liveItems().forEach(i=>{ if(canSee(i)&&occursOn(i,key)&&(i.type==='event'||(i.type==='task'&&!taskDone(i)))) out.push({i,key}); });
   }
   return out;
 }
@@ -1961,17 +2042,17 @@ function buildAIContext(){
   lines.push('■プロジェクト＆係と進捗');
   const safe=ZemiAI.visibleSnapshot(DB,ME);
   safe.projects.forEach(p=>{
-    const t=safe.items.filter(i=>i.pj===p.id&&i.type==='task');const done=t.filter(i=>i.done).length;
+    const t=safe.items.filter(i=>i.pj===p.id&&i.type==='task');const done=t.filter(taskDone).length;
     lines.push(`- ${p.name}：${done}/${t.length}完了`);
-    (p.teams||[]).forEach(tm=>{const tt=t.filter(i=>i.team===tm.name);lines.push(`  ・${tm.name}：${tt.filter(i=>i.done).length}/${tt.length}`);});
+    (p.teams||[]).forEach(tm=>{const tt=t.filter(i=>i.team===tm.name);lines.push(`  ・${tm.name}：${tt.filter(taskDone).length}/${tt.length}`);});
   });
-  const overdue=liveItems().filter(i=>i.type==='task'&&!i.done&&canSee(i)&&dleft(i.date)<0).sort((a,b)=>a.date.localeCompare(b.date));
+  const overdue=liveItems().filter(i=>i.type==='task'&&!taskDone(i)&&canSee(i)&&dleft(i.date)<0).sort((a,b)=>a.date.localeCompare(b.date));
   if(overdue.length){ lines.push('\n■期限超過'); overdue.forEach(i=>lines.push('- '+lineOf({i,key:i.date})+`〔id:${i.id}〕`)); }
   lines.push('\n■今後2週間の予定・締切');
   upcoming(14).forEach(o=>lines.push('- '+lineOf(o)+`〔id:${o.i.id}〕`));   // idはAIが削除・完了指定に使う
   // 全予定・タスクの一覧（2週間より先も含む。一括削除などに必要）
   const listed=new Set(); upcoming(14).forEach(o=>listed.add(o.i.id)); overdue.forEach(i=>listed.add(i.id));
-  const rest=liveItems().filter(i=>i.type!=='memo'&&canSee(i)&&!listed.has(i.id)&&!(i.type==='task'&&i.done)).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,250);
+  const rest=liveItems().filter(i=>i.type!=='memo'&&canSee(i)&&!listed.has(i.id)&&!(i.type==='task'&&taskDone(i))).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,250);
   const memos=liveMemos();
   if(memos.length){ lines.push('\n■ゼミで教わった大切なこと（メモ）'); memos.slice(0,60).forEach(m=>lines.push(`- [${m.memoCat||'ゼミ'}] ${m.title}`)); }
   if(rest.length){
@@ -2028,50 +2109,7 @@ async function askAI(){
     }
   }catch(e){ _aiChat.push({role:'model',text:'エラー: '+e.message}); renderAiChat(false); }
 }
-$('#ai_addbtn').onclick=()=>{
-  if(!requireName())return;
-  if(!_aiAdds.length&&!_aiDels.length&&!_aiDones.length) return;
-  const lines=[
-    ..._aiAdds.map(a=>`＋ ${a.date}${a.time?' '+a.time+(a.endTime?'〜'+a.endTime:''):''} ${a.title}${a.type==='task'?'（やること）':''}`),
-    ..._aiDels.map(d=>{ const x=d.id?liveItems().find(t=>t.id===d.id):null; return `－ ${d.date||(x&&x.date)||''} ${(x&&x.title)||d.title||d.id}（削除）`; }),
-    ..._aiDones.map(d=>{ const x=d.id?liveItems().find(t=>t.id===d.id):null; return `✓ ${(x&&x.title)||d.title||d.id}（完了にする）`; })
-  ].join('\n');
-  if(!confirm(`次の内容を実行します。よろしいですか？\n\n${lines}`)) return;
-  const ids=[],t0=now();
-  _aiAdds.forEach((a,ix)=>{
-    if(liveItems().some(x=>x.type===a.type&&x.title===a.title&&x.date===a.date&&(x.time||'')===(a.time||''))) return; // 二重登録防止
-    const id='i'+(t0+ix);
-    DB.items.push({id,type:a.type,pj:'',other:'',title:a.title,date:a.date,time:a.time,endTime:a.endTime,who:[],team:'',teamPj:'',visibility:'all',
-      important:false,note:'',done:false,doneAt:0,rep:'none',days:[],until:'',remind:'',comments:[],skip:[],notes:{},createdBy:ME,updatedAt:t0+ix,deleted:false});
-    ids.push(id);
-  });
-  let delCnt=0,doneCnt=0,delMiss=[];
-  const norm=s=>String(s||'').replace(/[\s　]/g,'');
-  const findTarget=dl=>(dl.id&&liveItems().find(t=>t.id===dl.id))
-    ||(dl.title&&dl.date&&liveItems().find(t=>norm(t.title)===norm(dl.title)&&t.date===dl.date))
-    ||(dl.title&&dl.date&&liveItems().find(t=>t.type==='event'&&norm(t.title)===norm(dl.title)&&occursOn(t,dl.date)))
-    ||(dl.title&&liveItems().find(t=>norm(t.title)===norm(dl.title)))
-    ||(dl.title&&liveItems().find(t=>(norm(t.title).includes(norm(dl.title))||norm(dl.title).includes(norm(t.title)))&&(!dl.date||t.date===dl.date||occursOn(t,dl.date))));
-  _aiDels.forEach(dl=>{
-    const x=findTarget(dl);
-    if(!x){ delMiss.push(dl.title||dl.id); return; }
-    if(x.type==='event'&&x.rep&&x.rep!=='none'&&dl.date&&x.date!==dl.date&&occursOn(x,dl.date)){   // くり返しの1回だけ削除
-      x.skip=Array.isArray(x.skip)?x.skip:[]; if(!x.skip.includes(dl.date))x.skip.push(dl.date);
-    } else { x.deleted=true; }
-    x.updatedAt=now(); if(!ids.includes(x.id))ids.push(x.id); delCnt++;
-  });
-  _aiDones.forEach(dl=>{
-    const x=findTarget(dl);
-    if(!x||x.type!=='task'){ delMiss.push(dl.title||dl.id); return; }
-    x.done=true; x.doneAt=now(); x.updatedAt=now(); if(!ids.includes(x.id))ids.push(x.id); doneCnt++;
-  });
-  $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[]; _aiDones=[];
-  if(!ids.length){ toast('変更できませんでした'+(delMiss.length?`（見つからず: ${delMiss.join('・')}）`:'（すべて登録済み）')); return; }
-  commit(ids);
-  toast(`実行しました（追加${ids.length-delCnt-doneCnt}件・削除${delCnt}件・完了${doneCnt}件${delMiss.length?`・見つからず${delMiss.length}件`:''}）`);
-};
-
-// v50: AIが提案した変更はローカルで直接反映せず、GASの権限付きホワイトリストで実行する。
+// AIが提案した変更はローカルで直接反映せず、GASの権限付きホワイトリストで実行する。
 $('#ai_addbtn').onclick=async()=>{
   if(!requireName()||!_aiPlan||!_aiPlan.operations.length) return;
   const ops=_aiPlan.operations;
@@ -2681,9 +2719,11 @@ function recapParticles(mon){
 function showRecap(tgt){
   const [yy,mm]=tgt.split('-').map(Number);
   const inMonth=t=>{ if(!t)return false; const d=new Date(t); return d.getFullYear()===yy&&d.getMonth()+1===mm; };
-  const doneStamp=i=>i.doneAt||(i.done?i.updatedAt:0);
-  const doneAll=liveItems().filter(i=>i.type==='task'&&i.done&&inMonth(doneStamp(i)));
-  const mine=ME?doneAll.filter(i=>(i.who||[]).includes(ME)||i.createdBy===ME):doneAll;
+  const doneStamp=i=>i.completionMode==='individual'
+    ?Number((ZemiAI.normalizeDoneBy(i.doneBy)[ME]||{}).at)||0
+    :(i.doneAt||(i.done?i.updatedAt:0));
+  const doneAll=liveItems().filter(i=>i.type==='task'&&taskDone(i)&&inMonth(doneStamp(i)));
+  const mine=ME?doneAll.filter(i=>taskTargets(i).includes(ME)||i.createdBy===ME):doneAll;
   const list=(mine.length?mine:doneAll).slice(0,10);
   const el=$('#recap');
   el.innerHTML=recapParticles(mm)+`<div class="rc-in">
@@ -2760,18 +2800,24 @@ async function syncNow(){
     // 【高速化】保留中の送信(flush)とサーバ最新の取得(load)を並列実行。どちらもLWWマージなので順不同で安全＝往復を1回分短縮。
     const [, remote] = await Promise.all([ flush(true), API.load() ]);
     if(remote&&remote.same){ setSync('ok'); _lastSync=new Date().toLocaleTimeString(); return; }   // 変化なし＝通信も描き直しも最小
-    let missing=[],changed=false;
+    let missing=[],repair=[],changed=false;
     if(remote&&remote.projects){
       // サーバに無いローカル分を洗い出して送る（初期データや同期漏れの自己修復。端末ごとに内容が違う問題を解消）
       const rp=new Set(remote.projects.map(p=>p.id)), ri=new Set((remote.items||[]).map(i=>i.id));
       missing=[...DB.projects.filter(p=>!rp.has(p.id)),...DB.items.filter(i=>!ri.has(i.id))].map(x=>x.id);
+      repair=completionRepairIds(DB,remote);
       const beforeSig=dbSig(DB);   // 軽量差分検出（全DBのJSON化を回避）
-      DB=migrate(mergeInto(DB,remote));LS.set('db',DB);
+      DB=migrate(mergeInto(DB,remote));
+      // サーバ側でLWW競合に負けた別メンバーのチェックを、合成済みデータとして再送する。
+      repair.forEach((id,n)=>{const i=DB.items.find(x=>x.id===id);if(i)i.updatedAt=now()+n;});
+      LS.set('db',DB);
       changed=dbSig(DB)!==beforeSig;
     }
+    const migrated=LS.get('completionMigrationPending',[]);LS.set('completionMigrationPending',[]);
+    if(Array.isArray(migrated))migrated.forEach(id=>{if(!pending.includes(id))pending.push(id);});
     applyMeta(remote); setSync('ok'); _lastSync=new Date().toLocaleTimeString();
     if(changed) renderSoon();   // 変化があったときだけ描き直す（操作中の「ボタンが効かない」を防ぐ）
-    if(missing.length){ missing.forEach(id=>{if(!pending.includes(id))pending.push(id);}); persistPending(); await flush(true); }
+    if(missing.length||repair.length||pending.length){ [...missing,...repair].forEach(id=>{if(!pending.includes(id))pending.push(id);}); persistPending(); await flush(true); }
   }
   catch(e){
     console.warn('読み込み失敗',e); setSync(String(e.message)==='unauthorized'?'auth':'err');
@@ -2827,7 +2873,7 @@ async function boot(){
 }
 boot();
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
-const APP_V='50'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
+const APP_V='51'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする（デプロイ時に両方上げる）
 (async()=>{
   if(location.protocol==='file:'){
     // PCのフォルダ内 index.html を直接開くと別データ（共有されない）になるので公開版へ誘導
