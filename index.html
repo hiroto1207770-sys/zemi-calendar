@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json?v=53">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -13,6 +13,42 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+// 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
+// iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
+window.__ZEMI_APP_V__='53';
+window.__zemiBootReady=false;
+window.__zemiShowBootError=function(){
+  const show=()=>{
+    const g=document.getElementById('bootGuard'); if(!g)return;
+    g.hidden=false; g.dataset.error='1';
+    const t=g.querySelector('[data-boot-text]');
+    if(t)t.textContent='アプリを更新して再読み込みします。予定や設定は消えません。';
+    const b=g.querySelector('button'); if(b)b.hidden=false;
+  };
+  if(document.body)show();else document.addEventListener('DOMContentLoaded',show,{once:true});
+};
+window.__zemiSafeReload=async function(){
+  try{
+    if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-v')))await caches.delete(k);}
+    if('serviceWorker' in navigator){
+      const r=await navigator.serviceWorker.register('./sw.js?v=53',{updateViaCache:'none'});
+      try{await r.update();}catch(_){}
+      if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
+    }
+  }catch(_){}
+  const u=new URL(location.href);u.searchParams.set('v','53');u.searchParams.set('recover',Date.now());location.replace(u.href);
+};
+window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
+window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js?v=53',{updateViaCache:'none'}).then(r=>{
+    try{r.update();}catch(_){}
+    if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
+  }).catch(()=>{});
+}
+setTimeout(()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();},8000);
+</script>
 <style>
 :root{
   --paper:#f1efe9; --card:#ffffff; --card-2:#f5f3ed; --card-3:#faf9f5;
@@ -365,9 +401,17 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 .toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--brandbg2);color:#fff;padding:10px 18px;border-radius:999px;font-size:12.5px;font-weight:600;z-index:60;box-shadow:0 6px 20px rgba(26,31,31,.4);opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;max-width:88vw;text-align:center}
 .toast.hasundo{pointer-events:auto}  /* 「元に戻す」ボタンを押せるように（pointer-events:noneだと押しても効かない） */
 .toast.on{opacity:1}
+#bootGuard{position:fixed;inset:0;z-index:300;background:var(--paper);color:var(--text);display:flex;align-items:center;justify-content:center;padding:28px;text-align:center}
+#bootGuard[hidden]{display:none!important}
+#bootGuard .bootbox{width:min(420px,100%);background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 20px;box-shadow:var(--sh)}
+#bootGuard .bootmark{font-size:28px;margin-bottom:9px}
+#bootGuard p{margin:0;color:var(--muted);line-height:1.7}
+#bootGuard button{margin-top:16px;background:var(--brandbg);color:#fff;border-radius:10px;padding:11px 20px;font-weight:700}
 </style>
 </head>
 <body>
+
+<div id="bootGuard"><div class="bootbox"><div class="bootmark">暦</div><p data-boot-text>ゼミカレンダーを読み込んでいます…</p><button type="button" hidden onclick="window.__zemiSafeReload()">データを消さずに復旧する</button></div></div>
 
 <header>
   <div class="brand">
@@ -713,7 +757,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=52"></script>
+<script src="ai-core.js?v=53" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -726,7 +770,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V='52'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'53'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -838,8 +882,16 @@ const holiday = key => HOLIDAYS[key] || null;
 // 【重要】共有モード（URLあり＝通常）ではseedを絶対に入れない。
 // seedはupdatedAtが「今」になるため、サーバの正データ（チーム分けや削除の記録）にLWWで勝ってしまい、
 // 新しい端末で「チームが消える」「昔の仮タスクが復活する」データ混同を起こしていた（根治済み）。
-const HAD_LOCAL_DB=!!LS.get('db',null);
-let DB = migrate(LS.get('db', null) || (CFG.url ? {projects:[],items:[]} : seed()));
+const _localDb=LS.get('db',null),HAD_LOCAL_DB=!!_localDb;
+let DB;
+try{
+  if(!window.ZemiAI){window.__zemiCoreMissing=true;throw new Error('ai-core unavailable');}
+  DB=migrate(_localDb||(CFG.url?{projects:[],items:[]}:seed()));
+}catch(e){
+  // 壊れた端末内データは削除・上書きせず隔離し、共有サーバからの復元を試す。
+  console.error('端末データの読み込み失敗',e);window.__zemiBootDataError=e;
+  DB={projects:[],items:[]};
+}
 
 function seed(){
   const d=new Date(), z=n=>String(n).padStart(2,'0');
@@ -2857,8 +2909,11 @@ function showTut(){
 }
 $('#tutNext').onclick=()=>{ _tutN++; if(_tutN>=TUT.length){ $('#tut').hidden=true; LS.set('tutDone',true); } else showTut(); };
 async function boot(){
+  if(window.__zemiCoreMissing){window.__zemiShowBootError();return;}
   applyLogo();
   render();
+  window.__zemiBootReady=true;
+  const guard=$('#bootGuard');if(guard)guard.hidden=true;
   if(!LS.get('tutDone',false)) showTut();   // 初めての人に3枚だけ説明
   // 新端末は同期完了まで空画面にしない。先に名前・合言葉の設定へ案内し、
   // 背後で共有データの復元を続ける。
@@ -2883,7 +2938,8 @@ async function boot(){
 boot().catch(e=>{
   console.error('起動失敗',e);
   // 起動途中の例外でも白紙にせず、設定と再同期の入口を必ず残す。
-  try{ render(); setSync('err'); openCfg(); toast('起動時の同期に失敗しました。設定を確認して「今すぐ同期」を押してください'); }catch(_){}
+  try{ render(); setSync('err'); openCfg(); toast('起動時の同期に失敗しました。設定を確認して「今すぐ同期」を押してください'); window.__zemiBootReady=true; const g=$('#bootGuard');if(g)g.hidden=true; }
+  catch(_){ window.__zemiShowBootError(); }
 });
 // ---- 版ずれの自動修復＆ローカルファイル警告 ----
 (async()=>{
@@ -2917,7 +2973,6 @@ window.addEventListener('pagehide',beaconFlush);
 window.addEventListener('online',syncNow);
 window.addEventListener('focus',()=>{ if(CFG.url)syncNow(); });
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').then(r=>{ try{r.update();}catch(e){} }).catch(()=>{});
   // 旧URL（/zemi-daicho/）時代の亡霊Service Workerを掃除（古い画面を配信し続けてデータ混同のもとになる）
   if(location.hostname.endsWith('github.io')){
     navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>{ if(!r.scope.includes('/zemi-calendar')) r.unregister().catch(()=>{}); })).catch(()=>{});

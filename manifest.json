@@ -1,7 +1,8 @@
 {
   "name": "水野ゼミ カレンダー",
   "short_name": "ゼミカレンダー",
-  "start_url": "./index.html",
+  "id": "./",
+  "start_url": "./?pwa=53",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

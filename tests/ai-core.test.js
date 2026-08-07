@@ -60,12 +60,27 @@ test('app version is initialized before startup and matches the service worker',
   const root=path.resolve(__dirname,'..');
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
   const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
-  const appVersion=(html.match(/const APP_V='(\d+)'/)||[])[1];
+  const manifest=fs.readFileSync(path.join(root,'manifest.json'),'utf8');
+  const appVersion=(html.match(/window\.__ZEMI_APP_V__='(\d+)'/)||[])[1];
   const workerVersion=(sw.match(/const V = 'zemi-v(\d+)'/)||[])[1];
   assert.ok(appVersion,'APP_V must be declared');
   assert.equal(workerVersion,appVersion);
   assert.match(html,new RegExp(`ai-core\\.js\\?v=${appVersion}`));
-  assert.ok(html.indexOf("const APP_V='")<html.indexOf('async function apiPost('));
-  assert.ok(html.indexOf("const APP_V='")<html.indexOf('boot().catch('));
+  assert.match(manifest,new RegExp(`"start_url": "\\./\\?pwa=${appVersion}"`));
+  assert.ok(html.indexOf("window.__ZEMI_APP_V__='")<html.indexOf('src="ai-core.js'));
   assert.match(html,/boot\(\)\.catch\(/);
+});
+
+test('startup recovery works before app code and service worker never returns HTML for failed assets',()=>{
+  const root=path.resolve(__dirname,'..');
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
+  assert.ok(html.indexOf('window.__zemiSafeReload')<html.indexOf('src="ai-core.js'));
+  assert.match(html,/id="bootGuard"/);
+  assert.match(html,/filter\(x=>x\.startsWith\('zemi-v'\)\)/);
+  assert.match(html,/updateViaCache:'none'/);
+  assert.match(sw,/ai-core\.js\?v=53/);
+  assert.match(sw,/caches\.match\(e\.request, \{ ignoreSearch: true \}\)/);
+  assert.doesNotMatch(sw,/catch\(\(\) => caches\.match\('\.\/index\.html'\)\)/);
+  assert.match(html,/DB=\{projects:\[\],items:\[\]\}/);
 });
