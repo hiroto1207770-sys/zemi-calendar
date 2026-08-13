@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=53">
+<link rel="manifest" href="manifest.json?v=54">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -16,7 +16,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='53';
+window.__ZEMI_APP_V__='54';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -32,17 +32,17 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-v')))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=53',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=54',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','53');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','54');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=53',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=54',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -757,7 +757,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=53" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=54" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -770,7 +770,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'53'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'54'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -822,6 +822,11 @@ function requireName(){ if(canEdit()) return true; toast('追加・編集する�
 // AIアシスタントは「名前を選んだ人」だけが使える（未設定ユーザーのAPI利用をフロントで遮断。サーバ側でも二重に拒否）
 function requireNameAI(){ if(ME) return true; toast('AIアシスタントは、設定で自分の名前を選んだ人だけが使えます'); openCfg(); return false; }
 const isAdmin = () => !!(ADMIN_OK && ME && (ADMIN_NAME==='' || ME===ADMIN_NAME));
+// 管理者端末として一度サーバ確認済みの端末は、同期中・一時オフラインでも管理UIを隠さない。
+// 実際の管理APIは引き続きサーバ側のsecret検証を必須にする。
+const hasAdminIdentity = () => !!(ME&&adminSecret()&&(ME===(ADMIN_NAME||ADMIN_DEFAULT)));
+const canManageApp = () => isAdmin()||hasAdminIdentity();
+const canModifyItem = i => !!(i&&ME&&(canManageApp()||i.createdBy===ME));
 let DEV = LS.get('dev','');   // この端末の識別子（本名の予約に使う）
 if(!DEV){   // localStorageに無い＝新端末 or 揮発。Cookieに退避したdevがあれば引き継ぐ（＝本人確認のやり直しを防ぐ）
   try{ const _c=JSON.parse(CK.get(IDCK)||'null'); if(_c&&_c.dev) DEV=String(_c.dev); }catch(e){}
@@ -950,14 +955,23 @@ function migrate(db){
 
 /* ------------------ サーバAPI ------------------ */
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const API_TIMEOUT_MS=7000;
+const AI_TIMEOUT_MS=25000;
+async function fetchTimed(url,options,timeoutMs){
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs||API_TIMEOUT_MS);
+  try{return await fetch(url,{...(options||{}),signal:ctl.signal});}
+  catch(e){if(e&&e.name==='AbortError')throw new Error('timeout');throw e;}
+  finally{clearTimeout(timer);}
+}
 // 排他制御との協調：サーバがロックを取れず {busy:true} を返したときや一時的な通信失敗のとき、
-// ランダムなウェイト（ジッター）を挟んで自動で数回リトライする。全アクションは冪等（mergeはLWW）なので再送は安全。
+// ランダムなウェイト（ジッター）を挟んで1回だけリトライする。長い再試行は画面を止めず自動同期に任せる。
 async function apiPost(body, _try){
   _try=_try||0;
-  body.key=CFG.appKey||''; body.me=ME||''; body.v=APP_V;   // me=操作の記録用、v=古い版からの保存をサーバで拒否（データ混同防止）
-  const MAXTRY=4;
+  body.key=CFG.appKey||''; body.me=ME||''; body.name=body.name||ME||''; body.dev=body.dev||DEV||''; body.v=APP_V;   // 新旧GASの両方へ本人名と端末を送る
+  if((body.action==='merge'||/^ai/.test(String(body.action||'')))&&canManageApp()){body.admin=true;body.secret=adminSecret();}
+  const MAXTRY=1, timeout=/^ai/.test(String(body.action||''))?AI_TIMEOUT_MS:API_TIMEOUT_MS;
   try{
-    const r=await fetch(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
+    const r=await fetchTimed(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)},timeout);
     if(!r.ok){
       if((r.status>=500||r.status===429) && _try<MAXTRY){ await sleep(400*(_try+1)+Math.floor(Math.random()*500)); return apiPost(body,_try+1); }
       throw new Error('HTTP '+r.status);
@@ -970,7 +984,7 @@ async function apiPost(body, _try){
     if(j&&j.error) throw new Error(j.error);
     return j;
   }catch(e){
-    // fetch自体の失敗（一時的なネットワーク断など）も数回だけ自動リトライ
+    // fetch自体の失敗は1回だけ再試行。timeoutはすぐ画面へ返し、裏の再同期へ回す。
     if(/busy|HTTP 5|HTTP 429/.test(String(e.message))===false && /Failed to fetch|NetworkError|load failed/i.test(String(e.message)) && _try<MAXTRY){
       await sleep(400*(_try+1)+Math.floor(Math.random()*500)); return apiPost(body,_try+1);
     }
@@ -978,20 +992,22 @@ async function apiPost(body, _try){
   }
 }
 let _booted=false;   // アプリを開いた記録は起動時の1回だけサーバに残す
-let _sig='',_pollN=0; // 通信量の節約：前回と同じデータならサーバは「変化なし」だけ返す（20秒ごとの全データ受信をやめる）
+let _sig=LS.get('serverSig',''),_pollN=Number(LS.get('serverPollN',0))||0; // 端末を閉じてもシグネチャを保持し、毎起動の全件取得を避ける
 const API = {
   async load(){
-    _pollN++;
-    const useH=_booted&&_sig&&(_pollN%10!==0);   // 10回に1回は全取得（名簿など付随情報の取りこぼし防止）
+    _pollN++;LS.set('serverPollN',_pollN);
+    const myClaims=ME?(Array.isArray(CLAIMS[ME])?CLAIMS[ME]:(CLAIMS[ME]?[CLAIMS[ME]]:[])):[];
+    const needIdentityMeta=!!(ME&&!myClaims.includes(DEV));
+    const useH=!!(_sig&&HAD_LOCAL_DB&&!needIdentityMeta&&(_pollN%10!==0));   // 本人情報が欠けた端末は必ず全取得
     // seen/dev/ua はオンライン判定用。旧GASは未知の項目を無視するため後方互換。
     // 新GASではCacheServiceだけに短時間保持し、名簿・予定・暗証番号のシートには書き込まない。
     const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+
       '&me='+encodeURIComponent(ME||'')+'&dev='+encodeURIComponent(DEV||'')+
       '&ua='+encodeURIComponent(navigator.userAgent||'')+(ME?'&seen=1':'')+
       (_booted?'':'&boot=1')+(useH?'&h='+encodeURIComponent(_sig):'');
-    const r=await fetch(u,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
+    const r=await fetchTimed(u,{cache:'no-store'},API_TIMEOUT_MS); if(!r.ok) throw new Error('HTTP '+r.status);
     const j=await r.json(); if(j&&j.error) throw new Error(j.error);
-    _booted=true; if(j&&j.sig) _sig=j.sig;
+    _booted=true; if(j&&j.sig){_sig=j.sig;LS.set('serverSig',_sig);}
     return j;
   },
   async merge(changed){ return apiPost({action:'merge',changed}); }
@@ -1228,7 +1244,7 @@ function progRow(p,withActions){
     });
     teamHtml=`<button class="teamtoggle" data-ttog="${p.id}">${topen?'△':'▽'} チーム（${p.teams.length}）</button>`+(topen?lines:'');
   }
-  const acts=withActions?`<button class="cbadge" data-editpj="${p.id}" style="font-size:14px">✎ 編集</button>`:'';
+  const acts=withActions&&canManageApp()?`<button class="cbadge" data-editpj="${p.id}" style="font-size:14px">✎ 編集</button>`:'';
   // ％タップで完了・未完了タスクを展開（アコーディオン）
   const open=openProg===p.id;
   let taskHtml='';
@@ -1339,12 +1355,12 @@ function renderTodo(){
 function renderPj(){
   const done=liveProjects().filter(p=>p.done);
   let h=activeProjects().map(p=>progRow(p,true)).join('')
-    +`<button class="empty" id="addPj" style="width:100%;font-weight:600;color:var(--ink)">＋ プロジェクト＆係を追加する</button>`;
+    +(canManageApp()?`<button class="empty" id="addPj" style="width:100%;font-weight:600;color:var(--ink)">＋ プロジェクト＆係を追加する</button>`:'');
   if(done.length) h+=`<div class="sec" style="margin-top:20px;opacity:.7">✓ 完了済みプロジェクト（${done.length}）</div>`
     +`<div style="opacity:.62">`+done.map(p=>progRow(p,true)).join('')+`</div>`;
   $('#pjList').innerHTML=h;
-  $('#addPj').onclick=()=>{ if(!requireName())return; openPjSheet(null); };
-  document.querySelectorAll('[data-editpj]').forEach(b=>b.onclick=e=>{e.stopPropagation();if(!requireName())return;openPjSheet(b.dataset.editpj);});
+  const addPj=$('#addPj');if(addPj)addPj.onclick=()=>{if(!canManageApp()){toast('プロジェクト構成は管理者だけが変更できます');return;}openPjSheet(null);};
+  document.querySelectorAll('[data-editpj]').forEach(b=>b.onclick=e=>{e.stopPropagation();if(!canManageApp()){toast('プロジェクト構成は管理者だけが変更できます');return;}openPjSheet(b.dataset.editpj);});
   document.querySelectorAll('[data-tteam]').forEach(b=>b.onclick=()=>{
     const [pid,tm]=b.dataset.tteam.split('::'); filter=pid; teamFilter=tm; view='todo'; render();
   });
@@ -1422,7 +1438,7 @@ function renderSync(){
   const stCls={ok:'',off:'off',err:'err',auth:'err',busy:'busy'}[syncState]||'off';
   const stTxt=syncState==='ok'
     ?(pending.length?`未送信 ${pending.length}件`:'サーバ保存済み')
-    :({off:'端末内のみ',err:pending.length?`未送信 ${pending.length}件・再接続待ち`:'つながりません',auth:'⚠合言葉が必要（設定から入力）',busy:'同期しています…'}[syncState]||'');
+    :({off:'端末内のみ',err:pending.length?`端末に保存済み・未送信 ${pending.length}件`:'端末データで表示中・再接続待ち',auth:'⚠合言葉が必要（設定から入力）',busy:'バックグラウンドで同期中…'}[syncState]||'');
   s.innerHTML=CFG.url?`<span class="st ${stCls}"><span class="led"></span>${stTxt}</span> ・ <button id="opencfg">設定</button>`
     :`<b>この端末の中だけに保存されています</b><br><button id="opencfg">全員で共有する設定をする</button>`;
   $('#opencfg').onclick=openCfg;
@@ -1439,8 +1455,8 @@ async function commit(ids){
   await flush();
 }
 async function flush(force){
-  if(!CFG.url||!pending.length) return;
-  if(!force && syncState==='busy'){ setTimeout(flush,1500); return; }   // 同期中でも保存が滞留しないよう少し後に自動再送（syncNowの並列呼び出しはforceで直進）
+  if(!CFG.url||!pending.length) return true;
+  if(!force && syncState==='busy'){ setTimeout(flush,1500); return false; }   // 同期中でも保存が滞留しないよう少し後に自動再送
   const ids=pending.splice(0);
   persistPending();
   const okId=x=>x&&x.id&&x.id!=='undefined'&&x.id!=='null';   // 壊れたidは送らない（データ破損の再発防止）
@@ -1450,12 +1466,12 @@ async function flush(force){
     const merged=await API.merge(changed);
     if(merged&&merged.projects){DB=migrate(mergeInto(DB,merged));LS.set('db',DB);render();}
     _lastServerBackup=now(); LS.set('lastServerBackup',_lastServerBackup);
-    persistPending(); setSync('ok');
+    persistPending(); setSync('ok'); return true;
   }
   catch(e){
     console.warn('同期失敗',e);
     ids.forEach(id=>{if(!pending.includes(id))pending.push(id);});
-    persistPending(); setSync('err');
+    persistPending(); setSync('err'); return false;
   }
 }
 // 画面終了時は通常のfetchが中断されることがあるため、同じ冪等mergeをsendBeaconでも追加送信する。
@@ -1464,7 +1480,8 @@ function beaconFlush(){
   if(!CFG.url||!pending.length||!navigator.sendBeacon) return;
   const ids=[...pending],okId=x=>x&&x.id&&x.id!=='undefined'&&x.id!=='null';
   const changed={projects:DB.projects.filter(p=>ids.includes(p.id)&&okId(p)),items:DB.items.filter(i=>ids.includes(i.id)&&okId(i))};
-  const body={action:'merge',changed,key:CFG.appKey||'',me:ME||'',v:APP_V};
+  const body={action:'merge',changed,key:CFG.appKey||'',me:ME||'',dev:DEV||'',v:APP_V};
+  if(canManageApp()){body.admin=true;body.secret=adminSecret();}
   try{ navigator.sendBeacon(CFG.url,new Blob([JSON.stringify(body)],{type:'text/plain;charset=utf-8'})); }catch(e){}
 }
 function setSync(s){ syncState=s; renderSync(); }
@@ -1566,11 +1583,17 @@ $('#q_edate').querySelectorAll('[data-qe]').forEach(b=>b.onclick=()=>{
   if(k==='clear'){ $('#f_edate').value=''; return; }
   $('#f_edate').value=addDaysStr($('#f_date').value||TODAY,+k);
 });
+function setItemEditorEnabled(enabled){
+  const sc='#kind button,#toBulk,#f_pj,#f_other,#f_title,#q_date button,#f_date,#f_edate,#q_edate button,#f_time,#f_end,#f_allday,#f_rep,#f_until,#f_days button,#f_alsotask,#f_remind,#f_note,#f_onote,#f_vis button,#f_team,#f_who button,#f_completion button,#f_imp,#save,#delOne,#del';
+  document.querySelectorAll(sc).forEach(el=>el.disabled=!enabled);
+  $('#save').hidden=!enabled;
+}
 function openSheet(id,dateKey){
   editing=id?DB.items.find(i=>i.id===id):null;
   editingDate=dateKey||(editing?editing.date:null);
-  $('#sheetTitle').textContent=editing?'なおす':'追加する';
-  $('#delWrap').hidden=!editing;
+  const editable=!editing||canModifyItem(editing);
+  $('#sheetTitle').textContent=editing?(editable?'なおす':'見る'):'追加する';
+  $('#delWrap').hidden=!editing||!editable;
   $('#shareWrap').hidden=!editing;
   $('#toBulk').hidden=!!editing;
   // くり返し予定は「この回だけ」の削除・メモができる
@@ -1608,6 +1631,7 @@ function openSheet(id,dateKey){
   fillTeamSelect($('#f_pj').value, editing&&editing.team?((editing.teamPj||editing.pj)+'::'+editing.team):'');
   renderComments(); $('#cmtWrap').hidden=!editing;
   renderSugg();
+  setItemEditorEnabled(editable);
   $('#sheet').hidden=false;
 }
 $('#f_pj').onchange=()=>{ $('#w_other').hidden=$('#f_pj').value!=='__other__'; fillTeamSelect($('#f_pj').value,''); };
@@ -1670,6 +1694,7 @@ $('#sheet').onclick=e=>{if(e.target.id==='sheet')$('#sheet').hidden=true};
 document.querySelectorAll('#kind button').forEach(b=>b.onclick=()=>setKind(b.dataset.k));
 $('#save').onclick=()=>{
   if(!requireName())return;
+  if(editing&&!canModifyItem(editing)){toast('作成者または管理者だけが編集できます');return;}
   const t=$('#f_title').value.trim();if(!t){$('#f_title').focus();return}
   const isEv=kind==='event', allday=isEv&&$('#f_allday').checked, rep=isEv?$('#f_rep').value:'none';
   const pjv=$('#f_pj').value, isOther=pjv==='__other__';
@@ -1725,6 +1750,7 @@ $('#save').onclick=()=>{
 /* くり返し予定の「この回だけ削除」（skipに日付を積む） */
 $('#delOne').onclick=()=>{
   if(!requireName())return;
+  if(!editing||!canModifyItem(editing)){toast('作成者または管理者だけが削除できます');return;}
   if(!editing||!editingDate)return;
   if(!confirm(editingDate.slice(5).replace('-','/')+' のこの回だけ削除します。よろしいですか？'))return;
   const tg=freshItem(editing); tg.skip=Array.isArray(tg.skip)?tg.skip:[];
@@ -1733,7 +1759,7 @@ $('#delOne').onclick=()=>{
   $('#sheet').hidden=true; commit([id]);
   toast('この回だけ削除しました',()=>{ const x=DB.items.find(i=>i.id===id); if(x){ x.skip=(x.skip||[]).filter(d=>d!==dk); x.updatedAt=now(); commit([id]); toast('元に戻しました'); } });
 };
-$('#del').onclick=()=>{ if(!requireName())return; if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;commit([id]);
+$('#del').onclick=()=>{ if(!requireName())return; if(!editing||!canModifyItem(editing)){toast('作成者または管理者だけが削除できます');return;} if(!confirm('削除します'))return; const t=freshItem(editing); t.deleted=true;t.updatedAt=now();const id=t.id;$('#sheet').hidden=true;commit([id]);
   toast('削除しました',()=>{ const x=DB.items.find(i=>i.id===id); if(x){ x.deleted=false; x.updatedAt=now(); commit([id]); toast('元に戻しました'); } }); };
 // LINE等への共有（iPhone/Androidは共有シート、PCはLINEの共有ページを開く）
 $('#shareBtn').onclick=async()=>{
@@ -1760,6 +1786,7 @@ function pjUsedColors(){
 }
 function swatchRow(sel,used){ return COLORS.map(c=>`<div class="sw ${c===sel?'on':''} ${used&&used.has(c)&&c!==sel?'taken':''}" style="background:${c}" data-c="${c}"></div>`).join(''); }
 function openPjSheet(id){
+  if(!canManageApp()){toast('プロジェクト構成は管理者だけが変更できます');return;}
   pjEditing=id?DB.projects.find(p=>p.id===id):null;
   $('#pjsheetTitle').textContent=pjEditing?'プロジェクト＆係をなおす':'プロジェクト＆係を追加';
   $('#pjDelWrap').hidden=!pjEditing;
@@ -1823,7 +1850,7 @@ $('#pj_addteam').onclick=()=>{ const u=pjUsedColors(); const c=COLORS.find(x=>!u
 $('#pjNo').onclick=()=>$('#pjsheet').hidden=true;
 $('#pjsheet').onclick=e=>{if(e.target.id==='pjsheet')$('#pjsheet').hidden=true};
 $('#pjOk').onclick=()=>{
-  if(!requireName())return;
+  if(!canManageApp()){toast('管理者権限が必要です');return;}
   const name=$('#pj_name').value.trim();if(!name){$('#pj_name').focus();return;}
   if(pjTeams.some(t=>!t.name.trim())){ toast('名前が入っていないチームがあります（チーム名を入れるか × で消してください）'); return; }
   const teams=pjTeams.map(t=>({name:t.name.trim(),color:t.color,members:(t.members||[]).filter(n=>CFG.members.some(m=>m.name===n))})).filter(t=>t.name);
@@ -1834,7 +1861,7 @@ $('#pjOk').onclick=()=>{
   $('#pjsheet').hidden=true;toast('プロジェクト＆係を保存しました');commit([id]);
 };
 $('#pjDone').onclick=()=>{
-  if(!pjEditing)return;
+  if(!canManageApp()||!pjEditing)return;
   const t=freshPj(pjEditing);
   t.done=!t.done; t.updatedAt=now();
   const id=t.id, nowDone=t.done;
@@ -1844,7 +1871,7 @@ $('#pjDone').onclick=()=>{
   commit([id]);
 };
 $('#pjDel').onclick=()=>{
-  if(!pjEditing)return;
+  if(!canManageApp()||!pjEditing)return;
   if(!confirm(`「${pjEditing.name}」と、その中のやること・予定をすべて削除します`))return;
   const t=freshPj(pjEditing);
   const changed=[t.id];t.deleted=true;t.updatedAt=now();
@@ -1950,6 +1977,7 @@ function renderMemoList(){
   $('#m_list').querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{
     if(!confirm('このメモを削除しますか？'))return;
     const m=DB.items.find(x=>x.id===b.dataset.mdel); if(!m)return;
+    if(!canModifyItem(m)){toast('作成者または管理者だけが削除できます');return;}
     if(memoEditId===m.id) memoResetForm();
     m.deleted=true; m.updatedAt=now(); renderMemoList(); commit([m.id]); toast('メモを削除しました');
   });
@@ -1959,7 +1987,8 @@ $('#m_add').onclick=()=>{
   const v=$('#m_text').value.trim(); if(!v){ $('#m_text').focus(); return; }
   let id;
   if(memoEditId){
-    const m=freshItem(DB.items.find(x=>x.id===memoEditId)||{id:memoEditId}); id=m.id;
+    const original=DB.items.find(x=>x.id===memoEditId);if(!canModifyItem(original)){toast('作成者または管理者だけが編集できます');return;}
+    const m=freshItem(original||{id:memoEditId}); id=m.id;
     m.title=v; m.memoCat=memoCat; m.updatedAt=now();
   } else {
     id='i'+now();
@@ -2080,8 +2109,16 @@ function renderAiChat(loading){
   el.hidden=!el.innerHTML;
   el.scrollTop=el.scrollHeight;
 }
-function openAI(){
+async function ensureAIIdentity(){
+  if(!requireNameAI())return false;
+  if(claimDevs(ME).includes(DEV))return true;
+  if(CFG.url)await syncNow();
+  if(claimDevs(ME).includes(DEV))return true;
+  toast('AIを使うには、設定で自分の名前と暗証番号を確認してください');openCfg();return false;
+}
+async function openAI(){
   if(!requireNameAI()) return;   // 名前未設定の端末はAIを開けない
+  if(!(await ensureAIIdentity()))return;
   if(!_aiSessionId) newAiSession();
   $('#ai_quick').innerHTML=AI_PRESETS.map(p=>`<button data-p="${esc(p)}">${esc(p)}</button>`).join('');
   $('#ai_quick').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#ai_q').value=b.dataset.p;askAI();});
@@ -2121,7 +2158,24 @@ async function aiGenerate(x,q){
   // AIは常にGASプロキシ経由＝Geminiキー・モデル選択はサーバの中だけ（フロントは鍵を一切持たない・直Google叩き無し）。
   // ※ contents（プロンプト・データ文脈）の構造は従来と完全に同一。コアロジック非破壊。
   const history=_aiChat.slice(-8).map(m=>({role:m.role,text:String(m.text||'').slice(0,1000)}));
-  return apiPost({action:'aiPlan',sessionId:_aiSessionId,q:q||'',history,dev:DEV});
+  const legacy=async()=>{
+    // 本番GASが旧action=aiのままでも、回答機能だけは止めない。変更操作は一切受け取らない読み取り専用互換モード。
+    const sys=`あなたは大学の水野ゼミの予定・タスク管理アシスタントです。今日は${TODAY}です。次のデータだけを根拠に日本語で簡潔に答えてください。予定の追加・変更・削除は提案に留め、JSONや実行命令は出さないでください。\n\n${buildAIContext()}`;
+    const contents=[{role:'user',parts:[{text:sys}]},{role:'model',parts:[{text:'わかりました。'}]},
+      ...history.map(m=>({role:m.role,parts:[{text:m.text}]}))];
+    const r=await apiPost({action:'ai',contents,q:q||'',dev:DEV});
+    const reply=String((r&&r.text)||'').trim();if(!reply)throw new Error('AIの回答が空です');
+    return {plan:{version:1,reply,needsClarification:false,candidates:[],operations:[]},legacy:true};
+  };
+  try{
+    const r=await apiPost({action:'aiPlan',sessionId:_aiSessionId,q:q||'',history,dev:DEV});
+    if(r&&r.plan&&r.plan.version===1)return r;
+    // 旧GASは未対応actionに旧形式の応答を返すことがある。
+    return legacy();
+  }catch(e){
+    if(/timeout|NetworkError|Failed to fetch|load failed|HTTP 5/i.test(String(e.message||e)))throw e;
+    return legacy();
+  }
 }
 /* AIの回答から「予定の追加・削除・完了の提案」ブロックを取り出す */
 let _aiAdds=[],_aiDels=[],_aiDones=[];
@@ -2145,7 +2199,7 @@ function aiExtractAdds(txt){
   return {clean:String(txt).replace(m[0],'').trim(), adds, dels, dones,plan:null};
 }
 async function askAI(){
-  if(!requireNameAI()) return;   // 名前未設定ならAPIを叩かせない（クイックボタン経由も含めて遮断）
+  if(!(await ensureAIIdentity())) return;   // 名前だけでなく、この端末の本人確認まで済んでいることを確認
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
   if(!CFG.url){ toast('サーバに接続されていません'); return; }   // AIはサーバ（GASプロキシ）経由でのみ動作。キーが未設定ならサーバがエラーを返す
   $('#ai_q').value='';
@@ -2841,49 +2895,63 @@ function applyMeta(remote){
 }
 // 軽量な変更シグネチャ。全DBの二重JSON.stringifyを避ける（updatedAtは変更時に必ず増える不変条件を利用）。
 function dbSig(db){
-  let mx=0; const ps=db.projects||[], is=db.items||[];
-  for(let k=0;k<ps.length;k++){ const u=ps[k].updatedAt||0; if(u>mx)mx=u; }
-  for(let k=0;k<is.length;k++){ const u=is[k].updatedAt||0; if(u>mx)mx=u; }
-  return ps.length+'.'+is.length+'.'+mx;
+  let mx=0,h=2166136261;const ps=db.projects||[],is=db.items||[];
+  const mix=x=>{const s=String((x&&x.id)||'')+':'+Number((x&&x.updatedAt)||0)+':'+Number(!!(x&&x.deleted));for(let n=0;n<s.length;n++){h^=s.charCodeAt(n);h=Math.imul(h,16777619);}};
+  for(let k=0;k<ps.length;k++){const u=ps[k].updatedAt||0;if(u>mx)mx=u;mix(ps[k]);}
+  for(let k=0;k<is.length;k++){const u=is[k].updatedAt||0;if(u>mx)mx=u;mix(is[k]);}
+  return ps.length+'.'+is.length+'.'+mx+'.'+(h>>>0);
 }
-let _syncing=false;   // syncNowの多重実行防止（focus/interval/onlineが同時に来ても1本化）
+let _syncPromise=null,_retryTimer=null,_retryStep=0;   // focus/interval/onlineが重なっても同じPromiseを返す
+function clearSyncRetry(){if(_retryTimer)clearTimeout(_retryTimer);_retryTimer=null;_retryStep=0;}
+function scheduleSyncRetry(){
+  if(_retryTimer||!CFG.url||navigator.onLine===false)return;
+  const waits=[5000,15000,45000,60000],ms=waits[Math.min(_retryStep++,waits.length-1)];
+  _retryTimer=setTimeout(()=>{_retryTimer=null;if(document.visibilityState==='visible')syncNow();},ms);
+}
 async function syncNow(){
-  if(!CFG.url){setSync('off');return;}
-  if(_syncing) return;                 // 同時実行を1本化（並列flush/loadの取り合いを防ぐ）
-  _syncing=true; setSync('busy');
-  try{
-    // 【高速化】保留中の送信(flush)とサーバ最新の取得(load)を並列実行。どちらもLWWマージなので順不同で安全＝往復を1回分短縮。
-    const [, remote] = await Promise.all([ flush(true), API.load() ]);
-    if(remote&&remote.same){ setSync('ok'); _lastSync=new Date().toLocaleTimeString(); return; }   // 変化なし＝通信も描き直しも最小
-    let missing=[],repair=[],changed=false;
-    if(remote&&remote.projects){
-      // サーバに無いローカル分を洗い出して送る（初期データや同期漏れの自己修復。端末ごとに内容が違う問題を解消）
-      const rp=new Set(remote.projects.map(p=>p.id)), ri=new Set((remote.items||[]).map(i=>i.id));
-      missing=[...DB.projects.filter(p=>!rp.has(p.id)),...DB.items.filter(i=>!ri.has(i.id))].map(x=>x.id);
-      repair=completionRepairIds(DB,remote);
-      const beforeSig=dbSig(DB);   // 軽量差分検出（全DBのJSON化を回避）
-      DB=migrate(mergeInto(DB,remote));
-      // サーバ側でLWW競合に負けた別メンバーのチェックを、合成済みデータとして再送する。
-      repair.forEach((id,n)=>{const i=DB.items.find(x=>x.id===id);if(i)i.updatedAt=now()+n;});
-      LS.set('db',DB);
-      changed=dbSig(DB)!==beforeSig;
+  if(!CFG.url){setSync('off');return false;}
+  if(navigator.onLine===false){setSync('err');scheduleSyncRetry();return false;}
+  if(_syncPromise)return _syncPromise;
+  _syncPromise=(async()=>{
+    setSync('busy');
+    try{
+      // 未送信があるときだけ先に保存してから取得する。GET/POSTの競合による二重取得と再送を防ぐ。
+      if(pending.length&&!(await flush(true)))throw new Error('save_failed');
+      const remote=await API.load();
+      let missing=[],repair=[],changed=false;
+      if(remote&&remote.projects){
+        // サーバに無いローカル分を洗い出して送る（初期データや同期漏れの自己修復）。
+        const rp=new Set(remote.projects.map(p=>p.id)), ri=new Set((remote.items||[]).map(i=>i.id));
+        missing=[...DB.projects.filter(p=>!rp.has(p.id)),...DB.items.filter(i=>!ri.has(i.id))].map(x=>x.id);
+        repair=completionRepairIds(DB,remote);
+        const beforeSig=dbSig(DB);
+        DB=migrate(mergeInto(DB,remote));
+        repair.forEach((id,n)=>{const i=DB.items.find(x=>x.id===id);if(i)i.updatedAt=now()+n;});
+        LS.set('db',DB);changed=dbSig(DB)!==beforeSig;
+      }
+      const migrated=LS.get('completionMigrationPending',[]);LS.set('completionMigrationPending',[]);
+      if(Array.isArray(migrated))migrated.forEach(id=>{if(!pending.includes(id))pending.push(id);});
+      applyMeta(remote);
+      [...missing,...repair].forEach(id=>{if(!pending.includes(id))pending.push(id);});persistPending();
+      const saved=!pending.length||await flush(true);
+      _lastSync=new Date().toLocaleTimeString();
+      if(changed)renderSoon();
+      if(saved){setSync('ok');clearSyncRetry();return true;}
+      setSync('err');scheduleSyncRetry();return false;
     }
-    const migrated=LS.get('completionMigrationPending',[]);LS.set('completionMigrationPending',[]);
-    if(Array.isArray(migrated))migrated.forEach(id=>{if(!pending.includes(id))pending.push(id);});
-    applyMeta(remote); setSync('ok'); _lastSync=new Date().toLocaleTimeString();
-    if(changed) renderSoon();   // 変化があったときだけ描き直す（操作中の「ボタンが効かない」を防ぐ）
-    if(missing.length||repair.length||pending.length){ [...missing,...repair].forEach(id=>{if(!pending.includes(id))pending.push(id);}); persistPending(); await flush(true); }
-  }
-  catch(e){
-    console.warn('読み込み失敗',e); setSync(String(e.message)==='unauthorized'?'auth':'err');
-    if(String(e.message)==='unauthorized' && !_keyPrompting){ // 合言葉が必要／間違っている → 入力を促す
-      _keyPrompting=true;
-      const k=prompt('このゼミの「合言葉」を入力してください（みんなに配られた合言葉です）');
-      _keyPrompting=false;
-      if(k!==null && k.trim()){ CFG.appKey=k.trim(); LS.set('cfg',CFG); setTimeout(syncNow,0); }   // finallyで_syncing解放後に再同期
+    catch(e){
+      console.warn('読み込み失敗',e);setSync(String(e.message)==='unauthorized'?'auth':'err');
+      if(String(e.message)==='unauthorized'&&!_keyPrompting){
+        _keyPrompting=true;
+        const k=prompt('このゼミの「合言葉」を入力してください（みんなに配られた合言葉です）');
+        _keyPrompting=false;
+        if(k!==null&&k.trim()){CFG.appKey=k.trim();LS.set('cfg',CFG);setTimeout(syncNow,0);}
+      }else scheduleSyncRetry();
+      return false;
     }
-  }
-  finally{ _syncing=false; }   // 多重実行ガードを必ず解放
+    finally{_syncPromise=null;}
+  })();
+  return _syncPromise;
 }
 let _keyPrompting=false;
 /* 初回チュートリアル */
