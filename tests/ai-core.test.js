@@ -79,8 +79,36 @@ test('startup recovery works before app code and service worker never returns HT
   assert.match(html,/id="bootGuard"/);
   assert.match(html,/filter\(x=>x\.startsWith\('zemi-v'\)\)/);
   assert.match(html,/updateViaCache:'none'/);
-  assert.match(sw,/ai-core\.js\?v=53/);
+  const v=(html.match(/window\.__ZEMI_APP_V__='(\d+)'/)||[])[1];
+  assert.match(sw,new RegExp(`ai-core\\.js\\?v=${v}`));
   assert.match(sw,/caches\.match\(e\.request, \{ ignoreSearch: true \}\)/);
   assert.doesNotMatch(sw,/catch\(\(\) => caches\.match\('\.\/index\.html'\)\)/);
   assert.match(html,/DB=\{projects:\[\],items:\[\]\}/);
+});
+
+test('sync has a deadline, persists signatures, and does not overlap load with pending writes',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/const API_TIMEOUT_MS=\d+;/);
+  assert.match(html,/AbortController/);
+  assert.match(html,/serverSig/);
+  assert.match(html,/if\(pending\.length&&!\(await flush\(true\)\)\)throw new Error\('save_failed'\)/);
+  assert.doesNotMatch(html,/Promise\.all\(\[ flush\(true\), API\.load\(\) \]\)/);
+  assert.match(html,/if\(_syncPromise\)return _syncPromise/);
+});
+
+test('ordinary members cannot edit other creators items or project structure in the UI',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/const canModifyItem = i =>/);
+  assert.match(html,/withActions&&canManageApp\(\)/);
+  assert.match(html,/if\(editing&&!canModifyItem\(editing\)\)/);
+  assert.match(html,/プロジェクト構成は管理者だけが変更できます/);
+});
+
+test('AI verifies the device and keeps a read-only fallback for the legacy GAS route',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/async function ensureAIIdentity\(\)/);
+  assert.match(html,/action:'aiPlan'/);
+  assert.match(html,/action:'ai',contents/);
+  assert.match(html,/読み取り専用互換モード/);
+  assert.match(html,/body\.name=body\.name\|\|ME/);
 });

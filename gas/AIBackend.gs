@@ -61,6 +61,7 @@ function aiApplyOneV50_(state,ctx,op){
   if(op.action!=='create'){
     if(!item||!aiCanSeeV50_(item,ctx.me,projects))throw new Error('対象が存在しないか閲覧権限がありません');
   }
+  if(item&&['update','delete','notify'].indexOf(op.action)>=0&&!aiCanMutateV54_(item,ctx))throw new Error('作成者または管理者だけが変更できます');
   if(op.action==='create'){
     var p=op.projectId&&projects.filter(function(x){return x.id===op.projectId&&!x.deleted;})[0];
     if(op.projectId&&!p)throw new Error('プロジェクトが存在しません');
@@ -78,6 +79,8 @@ function aiApplyOneV50_(state,ctx,op){
   else throw new Error('この操作は実行対象ではありません');
   item.updatedAt=Date.now();return {ok:true,targetId:item.id};
 }
+
+function aiCanMutateV54_(item,ctx){return !!(ctx&&item&&(ctx.isAdmin||item.createdBy===ctx.me));}
 
 function aiCanSeeV50_(i,me,projects){
   if(!i||i.deleted)return false;
@@ -106,7 +109,14 @@ function aiSetTaskDoneV51_(i,me,value,members,projects,ts){
 }
 function aiVisibleV50_(s,me){var ps=(s.projects||[]).filter(function(p){return !p.deleted;}),is=(s.items||[]).filter(function(i){return aiCanSeeV50_(i,me,ps);});var ids={};is.forEach(function(i){if(i.pj)ids[i.pj]=1;});return {projects:ps.filter(function(p){return ids[p.id]||!(p.members||[]).length||(p.members||[]).indexOf(me)>=0;}),items:is};}
 function aiVisibleMembersV50_(s,me,safe){var allowed={};allowed[me]=1;(safe.items||[]).forEach(function(i){(i.who||[]).forEach(function(n){allowed[n]=1;});});(safe.projects||[]).forEach(function(p){(p.teams||[]).forEach(function(t){if((t.members||[]).indexOf(me)>=0)(t.members||[]).forEach(function(n){allowed[n]=1;});});});return (s.members||[]).filter(function(m){return allowed[m.name];});}
-function aiResolveNamesV50_(q,members){var amb=[];(q.match(/[A-Za-zＡ-Ｚａ-ｚぁ-んァ-ヶ一-龠々]{1,12}/g)||[]).forEach(function(token){var n=aiNormV50_(token),hits=members.filter(function(m){return aiMemberTermsV50_(m).some(function(x){x=aiNormV50_(x);return x===n||x.indexOf(n)>=0||n.indexOf(x)>=0;});});if(hits.length>1)amb.push({input:token,candidates:hits.map(function(m){return m.name;})});});return {ambiguous:amb};}
+function aiResolveNamesV50_(q,members){
+  // 質問文の一般語を人名候補として拾わない。登録済みの氏名・表示名・別名そのものが
+  // 文中に現れ、かつ同じ呼び名が複数人に対応するときだけ確認を返す。
+  var nq=aiNormV50_(q),byTerm={},amb=[];
+  (members||[]).forEach(function(m){aiMemberTermsV50_(m).forEach(function(raw){var t=aiNormV50_(raw);if(t.length<2)return;(byTerm[t]=byTerm[t]||[]).push(m.name);});});
+  Object.keys(byTerm).forEach(function(t){var names=byTerm[t].filter(function(n,i,a){return a.indexOf(n)===i;});if(names.length>1&&nq.indexOf(t)>=0)amb.push({input:t,candidates:names});});
+  return {ambiguous:amb};
+}
 function aiMemberTermsV50_(m){return [m.name,m.displayName,m.display,m.realName,m.kana,m.hiragana,m.nickname,m.nick].concat(m.aliases||[]).filter(String);}
 function aiNormV50_(v){return String(v||'').toLowerCase().replace(/[\s　・･._\-]/g,'');}
 
