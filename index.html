@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=59">
+<link rel="manifest" href="manifest.json?v=60">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -13,7 +13,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='59';
+window.__ZEMI_APP_V__='60';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -29,17 +29,17 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54'))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=59',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=60',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','59');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','60');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=59',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=60',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -756,7 +756,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=59" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=60" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -769,7 +769,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'59'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'60'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -785,6 +785,11 @@ function backupIdentity(){   // 現在の身元情報をCookieへ退避（localS
     if(!ME&&old&&old.me)return;
     CK.set(IDCK, JSON.stringify({me:ME,dev:DEV,ml:ME_LOCKED?1:0,mla:LS.get('meLockedAt',0)}));
   }catch(e){}
+}
+function clearSelectedIdentity(){
+  ME='';ME_LOCKED=false;ADMIN_OK=false;_adminUnlocked=false;
+  LS.set('me','');LS.set('meLocked',false);LS.set('meLockedAt',0);
+  CK.set(IDCK,JSON.stringify({me:'',dev:DEV,ml:0,mla:0}));
 }
 // 管理者デバイスシークレット（タスク6）：初回パス認証時にサーバが発行→この端末のCookie(400日)＋localStorageに固定。
 // 以降はパスワード不要でこのシークレットにより自動デバイス認証。値はサーバのmetaにも保存され二重検証される。
@@ -1067,6 +1072,10 @@ const $=s=>document.querySelector(s);
 const pj=id=>(DB.projects.find(p=>p.id===id&&!p.deleted))||{name:'—',color:'#aba393',teams:[]};
 const liveProjects=()=>DB.projects.filter(p=>!p.deleted);
 const activeProjects=()=>DB.projects.filter(p=>!p.deleted&&!p.done); // 進行中のみ（予定の登録先・フィルタ・進捗はこちら）
+// 「ゼミ」はプロジェクトではなく名簿そのもの。既存予定の参照先は残しつつ、
+// プロジェクト＆係のUIからだけ除外し、所属者は常に最新の名簿から決める。
+const isSeminarGroup=p=>!!p&&String(p.name||'').normalize('NFKC').trim()==='ゼミ';
+const selectableProjects=()=>activeProjects().filter(p=>!isSeminarGroup(p));
 const liveItems=()=>DB.items.filter(i=>!i.deleted);
 const dleft=d=>Math.round((new Date(d+'T00:00')-new Date(TODAY+'T00:00'))/86400000);
 const taskTargets=i=>ZemiAI.taskTargets(i,CFG.members,DB.projects);
@@ -1137,7 +1146,7 @@ function renderFilters(){
   if(ME){
     // プロジェクト名ではなく「自分が入っているチーム」だけを並べる。
     // チーム分けの無い係は、担当メンバーに入っていれば係名で出す（係全体＝1つのチーム扱い）。
-    activeProjects().forEach(p=>{
+    selectableProjects().forEach(p=>{
       if((p.teams||[]).length){
         p.teams.forEach(t=>{
           if(!(t.members||[]).includes(ME)) return;
@@ -1151,7 +1160,7 @@ function renderFilters(){
     });
   } else {
     // 名前未設定の端末は従来どおりプロジェクトで絞り込み
-    h+=activeProjects().map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
+    h+=selectableProjects().map(p=>`<button class="chip ${filter===p.id?'on':''}" data-p="${p.id}" style="${filter===p.id?`color:${p.color};border-color:${p.color};background:${p.color}12`:''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</button>`).join('');
   }
   if(showMine) h+=`<button class="chip mine ${mineOnly?'on':''}" data-mine="1">自分の担当</button>`;
   f.innerHTML=h;
@@ -1216,7 +1225,7 @@ function renderHome(){
   h+=near.length?near.slice(0,8).map(i=>card(i)).join(''):`<div class="empty">直近の締切はありません</div>`;
   h+=`</div>`;
   h+=`<div class="homeblock"><div class="sec">プロジェクト＆係の進み具合</div>`;
-  h+=activeProjects().map(p=>progRow(p)).join('')||`<div class="empty">プロジェクト＆係がありません</div>`;
+  h+=selectableProjects().map(p=>progRow(p)).join('')||`<div class="empty">プロジェクト＆係がありません</div>`;
   h+=`</div>`;
   el.innerHTML=h;
   $('#tAI').onclick=openAI;
@@ -1358,7 +1367,7 @@ function renderTodo(){
 }
 function renderPj(){
   const done=liveProjects().filter(p=>p.done);
-  let h=activeProjects().map(p=>progRow(p,true)).join('')
+  let h=selectableProjects().map(p=>progRow(p,true)).join('')
     +(canManageApp()?`<button class="empty" id="addPj" style="width:100%;font-weight:600;color:var(--ink)">＋ プロジェクト＆係を追加する</button>`:'');
   if(done.length) h+=`<div class="sec" style="margin-top:20px;opacity:.7">✓ 完了済みプロジェクト（${done.length}）</div>`
     +`<div style="opacity:.62">`+done.map(p=>progRow(p,true)).join('')+`</div>`;
@@ -1545,7 +1554,7 @@ function fillTeamSelect(pid,selected){
   $('#w_team').hidden = vis!=='team';   // 「チーム限定」を選んだときだけ表示
   const cur=selected||'';
   let h='';
-  activeProjects().forEach(p=>{
+  selectableProjects().forEach(p=>{
     if((p.teams||[]).length){
       h+=`<optgroup label="${esc(p.name)}">`+p.teams.map(t=>{
         const v=p.id+'::'+t.name;
@@ -1606,7 +1615,7 @@ function openSheet(id,dateKey){
   if(rec){ $('#onoteDate').textContent=editingDate.slice(5).replace('-','/'); $('#f_onote').value=(editing.notes||{})[editingDate]||''; } else { $('#f_onote').value=''; }
   $('#delOne').hidden=!rec; $('#del').textContent=rec?'すべての回を削除':'削除する';
   $('#f_alsotask').checked=false;
-  const pjOpts=activeProjects();
+  const pjOpts=selectableProjects();
   if(editing&&editing.pj&&!pjOpts.some(p=>p.id===editing.pj)){ const ep=DB.projects.find(p=>p.id===editing.pj&&!p.deleted); if(ep)pjOpts.unshift(ep); } // 編集中の予定が完了済み案件に属していても選べるように
   $('#f_pj').innerHTML=pjOpts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.done?'（完了済み）':''}</option>`).join('')+`<option value="__other__">その他（プロジェクトなし・自由入力）</option>`;
   fillWho();
@@ -2662,6 +2671,7 @@ $('#c_file').onchange=e=>{
 $('#openCfgBtn').onclick=openCfg;
 $('#cfgNo').onclick=()=>$('#cfg').hidden=true;
 $('#cfgOk').onclick=async()=>{
+  toast('設定を確認して保存しています…');
   CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定（編集UI廃止）
   CFG.appKey=$('#c_keyon').checked?$('#c_key').value.trim():'';
   const wasAdmin=isAdmin();
@@ -2708,7 +2718,7 @@ $('#cfgOk').onclick=async()=>{
 $('#c_tut').onclick=()=>{ $('#cfg').hidden=true; _tutN=0; showTut(); };   // 使い方チュートリアルをもう一度見る
 $('#c_bulk').onclick=()=>{ $('#cfg').hidden=true; openBulk(); };   // 設定を閉じてから開く（設定の裏に隠れて見えなかった不具合の修正）
 function openBulk(){
-  $('#bk_pj').innerHTML=activeProjects().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')+`<option value="__other__">その他（自由入力）</option>`;
+  $('#bk_pj').innerHTML=selectableProjects().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')+`<option value="__other__">その他（自由入力）</option>`;
   $('#bk_pj').onchange=()=>{ $('#bk_other').hidden=$('#bk_pj').value!=='__other__'; };
   $('#bk_other').hidden=$('#bk_pj').value!=='__other__';
   $('#bk_year').value=new Date().getFullYear();
@@ -2908,6 +2918,14 @@ function applyMeta(remote){
   // 管理者によるロック解除。端末間の時計ズレに依存しないよう「消費済みの解除ts」を記録して差分で判定する。
   // （旧実装は サーバ時刻ul[ME] > クライアント時刻meLockedAt の比較で、時計ズレのある他端末で反映されない不具合があった）
   const ul=remote.unlocks||{}; _unlocks=ul;
+  if(ME&&/^logout:/.test(String(ul[ME]||''))){
+    const seen=LS.get('meUnlockSeen',{});
+    if(String(seen[ME]||'')!==String(ul[ME])){
+      const old=ME;seen[old]=ul[old];LS.set('meUnlockSeen',seen);clearSelectedIdentity();
+      if(!$('#cfg').hidden){memEdit=CFG.members.map(m=>({...m}));refreshMeOptions();$('#c_me').disabled=false;$('#c_disp').disabled=false;$('#c_mehelp').textContent='自分の名前を選んでください。';}
+      toast('この端末の「'+old+'」選択を解除しました');renderSoon();return;
+    }
+  }
   if(ME&&ME_LOCKED&&ul[ME]){
     const seen=LS.get('meUnlockSeen',{});
     if(String(seen[ME]||'')!==String(ul[ME])){        // まだ消費していない新しい解除記録 → ロック解除

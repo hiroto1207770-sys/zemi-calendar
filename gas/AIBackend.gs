@@ -96,7 +96,7 @@ function aiCanSeeV50_(i,me,projects){
 function aiTaskTargetsV51_(i,members,projects){
   var out=[],seen={};function add(n){n=String(n||'');if(n&&!seen[n]){seen[n]=1;out.push(n);}}
   if((i.who||[]).length){(i.who||[]).forEach(add);return out;}
-  if(i.team){var p=(projects||[]).filter(function(x){return x.id===(i.teamPj||i.pj);})[0],tm=p&&(p.teams||[]).filter(function(t){return t.name===i.team;})[0];
+  if(i.team){var p=(projects||[]).filter(function(x){return x.id===(i.teamPj||i.pj);})[0];if(p&&String(p.name||'').replace(/^\s+|\s+$/g,'')==='ゼミ'){(members||[]).forEach(function(m){add(typeof m==='string'?m:m.name);});return out;}var tm=p&&(p.teams||[]).filter(function(t){return t.name===i.team;})[0];
     if(tm){(tm.members||[]).forEach(add);return out;}if(p&&p.name===i.team){(p.members||[]).forEach(add);return out;}}
   (members||[]).forEach(function(m){add(typeof m==='string'?m:m.name);});return out;
 }
