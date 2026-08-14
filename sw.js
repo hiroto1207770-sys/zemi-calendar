@@ -1,21 +1,21 @@
 // キャッシュ優先 → 裏で更新。GASの初回応答が遅くても画面が即出る。
 // ＋ Web Push受信（本文はGASの notifyfeed から取得してロック画面に表示）
-const V = 'zemi-v54';
-const CORE = ['./', './index.html', './ai-core.js?v=54', './manifest.json?v=54', './icon-192.png', './icon-512.png'];
+const V = 'zemi-calendar-v56';
+const CORE = ['./', './index.html', './ai-core.js?v=56', './manifest.json?v=56', './privacy.html', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(k =>
-    Promise.all(k.filter(x => x.startsWith('zemi-v') && x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim()));
+    Promise.all(k.filter(x => (x.startsWith('zemi-calendar-v') || x === 'zemi-v54') && x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim()));
 });
 self.addEventListener('message', e => { if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = e.request.url;
   // APIとフォントはキャッシュ制御しない（常にネットワーク）
-  if (url.includes('script.google.com') || url.includes('fonts.googleapis.com') || url.includes('fonts.gstatic.com')) return;
+  if (url.includes('script.google.com')) return;
   // 同一オリジンのみキャッシュ対象
   if (new URL(url).origin !== self.location.origin) return;
   const path = new URL(url).pathname;
