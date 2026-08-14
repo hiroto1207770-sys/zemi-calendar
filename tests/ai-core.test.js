@@ -137,9 +137,18 @@ test('the seminar registry is hidden from project-and-role UI selectors',()=>{
 test('a targeted server logout clears only the currently selected identity without clearing app data',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
   assert.match(html,/function clearSelectedIdentity\(\)/);
-  assert.match(html,/\/\^logout:\/\.test/);
+  assert.match(html,/claimsReceived&&!claimDevs\(ME\)\.includes\(DEV\)/);
+  assert.match(html,/!\/\^logout:\/\.test\(String\(ul\[ME\]\)\)/);
   assert.doesNotMatch(html,/identityResetKey|identityResetV61/);
   assert.doesNotMatch(html,/localStorage\.clear\(\)/);
+});
+
+test('multi-device login is server-confirmed and never saved optimistically',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/if\(!r\|\|!r\.ok\|\|!r\.claims\) throw new Error/);
+  assert.match(html,/if\(!claimDevs\(ME\)\.includes\(DEV\)\) throw new Error/);
+  assert.match(html,/priorClaimed\?priorMe:''/);
+  assert.match(html,/本人確認を完了できませんでした/);
 });
 
 test('privacy, identity recovery, cache scope, and Gemini data mode fail closed',()=>{
