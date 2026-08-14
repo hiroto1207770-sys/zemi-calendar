@@ -66,3 +66,14 @@ test('AI asks for a name only when a registered alias is genuinely ambiguous',()
   assert.equal(ai.aiResolveNamesV50_('今日の予定を教えて',members).ambiguous.length,0);
   assert.equal(ai.aiResolveNamesV50_('はなの予定を教えて',members).ambiguous.length,1);
 });
+
+test('nickname claims resolve to one canonical identity',()=>{
+  const state={
+    display:{'田中大翔':'ひろと'},
+    members:[{name:'田中大翔'},{name:'ひろと'}]
+  };
+  const idCtx={metaGet_:(k,d)=>state[k]??d};vm.createContext(idCtx);
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname,'..','gas','CanonicalIdentity.gs'),'utf8'),idCtx);
+  assert.equal(idCtx.canonicalIdentityV57_('ひろと'),'田中大翔');
+  assert.deepEqual(Array.from(idCtx.identityClaimDevsV57_('田中大翔',{'田中大翔':['pc'],'ひろと':['iphone']})),['pc','iphone']);
+});

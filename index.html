@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=56">
+<link rel="manifest" href="manifest.json?v=57">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -13,7 +13,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='56';
+window.__ZEMI_APP_V__='57';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -29,17 +29,17 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54'))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=56',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=57',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','56');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','57');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=56',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=57',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -756,7 +756,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=56" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=57" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -769,7 +769,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'56'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'57'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -837,6 +837,15 @@ if(!DEV){   // localStorageに無い＝新端末 or 揮発。Cookieに退避し�
 let DISPLAY = LS.get('display', {});       // 本名→カレンダー表示名（サーバ共有）
 let CLAIMS  = LS.get('claims', {});        // 本名→端末IDの配列（同じ人の複数端末を許可）
 let PINSET  = LS.get('pinset', {});        // 本名→暗証番号が設定済みか(true/false)。番号そのものはサーバのみが知る
+const identityKey=v=>String(v||'').normalize('NFKC').trim().toLocaleLowerCase('ja');
+function canonicalIdentityName(value,members=CFG.members,display=DISPLAY){
+  const raw=String(value||'').trim(),key=identityKey(raw);if(!key)return '';
+  const owners=(members||[]).filter(m=>m&&identityKey(m.name)!==key&&identityKey(display[m.name])===key);
+  return owners.length===1?String(owners[0].name):raw;
+}
+function selectableMembers(rows=CFG.members){
+  return (rows||[]).filter(m=>canonicalIdentityName(m.name,rows,DISPLAY)===String(m.name));
+}
 let ADMIN_PRESENCE = {};                   // 管理者監査から受け取る一時情報。端末保存せず、一般ユーザーの同期にも載せない
 let GOALS   = LS.get('goals', {zemi:'',gen:''}); // ホームに出す目標（管理者が設定・サーバ共有）
 // 【揮発性対策】localStorageが消えていてもCookieに退避した身元があれば復元する。
@@ -2236,10 +2245,10 @@ $('#ai_addbtn').onclick=async()=>{
 
 /* ============================================================ 設定 */
 let memEdit=[];
-const claimDevs=name=>{ const c=CLAIMS[name]; return Array.isArray(c)?c:(c?[c]:[]); }; // 本名→端末IDの配列（旧・文字列形式も配列化）
+const claimDevs=name=>{ const canonical=canonicalIdentityName(name),all=[]; Object.keys(CLAIMS||{}).forEach(k=>{if(canonicalIdentityName(k)===canonical){const c=CLAIMS[k],xs=Array.isArray(c)?c:(c?[c]:[]);xs.forEach(x=>{if(!all.includes(x))all.push(x);});}}); return all; }; // 表示名で作られた旧claimも本名へ統合して扱う
 function refreshMeOptions(){
   // 同じ人の複数端末を許可：他端末が使っていても選べる（保存時に本人確認の確認だけ出す）
-  $('#c_me').innerHTML=`<option value="">（未設定）</option>`+memEdit.map(m=>{
+  $('#c_me').innerHTML=`<option value="">（未設定）</option>`+selectableMembers(memEdit).map(m=>{
     const devs=claimDevs(m.name), mine=devs.includes(DEV), others=devs.filter(d=>d!==DEV).length;
     const disp = DISPLAY[m.name] && DISPLAY[m.name]!==m.name ? `（${esc(DISPLAY[m.name])}）` : '';
     const mark = mine ? ' — この端末' : (others ? ' — 他の端末で使用中' : '');
@@ -2248,7 +2257,7 @@ function refreshMeOptions(){
 }
 function renderMemListRO(){
   const el=$('#c_memlist_ro'); if(!el) return;
-  el.innerHTML=(CFG.members||[]).map(m=>`<div class="memrow"><div class="mn">${esc(m.name)}${DISPLAY[m.name]&&DISPLAY[m.name]!==m.name?`　<span style="color:var(--muted);font-size:12px">（${esc(DISPLAY[m.name])}）</span>`:''}</div>${m.birthday?`<span style="font-size:12px;color:var(--muted)">🎂${esc(bdDisp(m.birthday))}</span>`:''}</div>`).join('')
+  el.innerHTML=selectableMembers().map(m=>`<div class="memrow"><div class="mn">${esc(m.name)}${DISPLAY[m.name]&&DISPLAY[m.name]!==m.name?`　<span style="color:var(--muted);font-size:12px">（${esc(DISPLAY[m.name])}）</span>`:''}</div>${m.birthday?`<span style="font-size:12px;color:var(--muted)">🎂${esc(bdDisp(m.birthday))}</span>`:''}</div>`).join('')
     ||`<div style="font-size:12px;color:var(--faint);padding:6px 0">メンバーがいません</div>`;
 }
 function setAdminPresence(src){
@@ -2646,7 +2655,7 @@ $('#cfgOk').onclick=async()=>{
     CFG.members=memEdit.map(m=>({...m,name:m.name,birthday:m.birthday||'',email:m.email||'',aliases:Array.isArray(m.aliases)?m.aliases:[]})).filter(m=>m.name);
   }
   CFG.spanArrow=$('#c_span').checked;
-  const chosen=$('#c_me').value;
+  const chosen=canonicalIdentityName($('#c_me').value,memEdit,DISPLAY);
   const nameChanged=!$('#c_me').disabled && chosen!==ME;
   if(nameChanged){
     ME=chosen; _adminUnlocked=false;
@@ -2880,6 +2889,8 @@ function applyMeta(remote){
   // AIキーは配らない（サーバの中だけ・action=ai経由で全員使える＝抜き取り不可能）
   // 管理者パスは同期しない（サーバ側で照合。応答に載せると誰でも見えてしまうため）
   if(typeof remote.adminname==='string'){ ADMIN_NAME=remote.adminname; CFG.adminName=ADMIN_NAME; LS.set('cfg',CFG); } // 管理者の本名もサーバが正（''=未登録）
+  const canonicalMe=canonicalIdentityName(ME);
+  if(ME&&canonicalMe!==ME){ME=canonicalMe;LS.set('me',ME);backupIdentity();}
   // 管理者によるロック解除。端末間の時計ズレに依存しないよう「消費済みの解除ts」を記録して差分で判定する。
   // （旧実装は サーバ時刻ul[ME] > クライアント時刻meLockedAt の比較で、時計ズレのある他端末で反映されない不具合があった）
   const ul=remote.unlocks||{}; _unlocks=ul;

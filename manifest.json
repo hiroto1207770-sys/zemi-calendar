@@ -2,7 +2,7 @@
   "name": "水野ゼミ カレンダー",
   "short_name": "ゼミカレンダー",
   "id": "./",
-  "start_url": "./?pwa=56",
+  "start_url": "./?pwa=57",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
