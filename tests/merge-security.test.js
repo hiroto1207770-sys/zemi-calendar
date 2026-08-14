@@ -77,3 +77,17 @@ test('nickname claims resolve to one canonical identity',()=>{
   assert.equal(idCtx.canonicalIdentityV57_('ひろと'),'田中大翔');
   assert.deepEqual(Array.from(idCtx.identityClaimDevsV57_('田中大翔',{'田中大翔':['pc'],'ひろと':['iphone']})),['pc','iphone']);
 });
+
+test('a successful new claim consumes only the stale logout marker',()=>{
+  const store={unlocks:{A:'logout:123',B:456}};
+  const ctx={
+    metaGet_:(key,fallback)=>key in store?JSON.parse(JSON.stringify(store[key])):fallback,
+    metaSet_:(key,value)=>{store[key]=JSON.parse(JSON.stringify(value));}
+  };
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname,'..','gas','MultiDeviceIdentity.gs'),'utf8'),ctx);
+  assert.equal(ctx.identityCompleteClaimV63_('A'),true);
+  assert.equal(ctx.identityCompleteClaimV63_('A'),false);
+  assert.equal(store.unlocks.A,undefined);
+  assert.equal(store.unlocks.B,456);
+});
