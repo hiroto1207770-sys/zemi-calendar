@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=54">
+<link rel="manifest" href="manifest.json?v=55">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -16,7 +16,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='54';
+window.__ZEMI_APP_V__='55';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -32,7 +32,7 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-v')))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=54',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=55',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
@@ -42,7 +42,7 @@ window.__zemiSafeReload=async function(){
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=54',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=55',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -757,7 +757,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=54" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=55" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -770,7 +770,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'54'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'55'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -2901,17 +2901,19 @@ function dbSig(db){
   for(let k=0;k<is.length;k++){const u=is[k].updatedAt||0;if(u>mx)mx=u;mix(is[k]);}
   return ps.length+'.'+is.length+'.'+mx+'.'+(h>>>0);
 }
-let _syncPromise=null,_retryTimer=null,_retryStep=0;   // focus/interval/onlineが重なっても同じPromiseを返す
+let _syncPromise=null,_retryTimer=null,_retryStep=0,_syncCooldownUntil=0;   // timeout後もGAS実行は残るため、再試行を重ねない
 function clearSyncRetry(){if(_retryTimer)clearTimeout(_retryTimer);_retryTimer=null;_retryStep=0;}
 function scheduleSyncRetry(){
   if(_retryTimer||!CFG.url||navigator.onLine===false)return;
-  const waits=[5000,15000,45000,60000],ms=waits[Math.min(_retryStep++,waits.length-1)];
+  const waits=[15000,30000,60000],backoff=waits[Math.min(_retryStep++,waits.length-1)];
+  const ms=Math.max(backoff,_syncCooldownUntil-Date.now());
   _retryTimer=setTimeout(()=>{_retryTimer=null;if(document.visibilityState==='visible')syncNow();},ms);
 }
 async function syncNow(){
   if(!CFG.url){setSync('off');return false;}
   if(navigator.onLine===false){setSync('err');scheduleSyncRetry();return false;}
   if(_syncPromise)return _syncPromise;
+  if(Date.now()<_syncCooldownUntil){setSync('err');scheduleSyncRetry();return false;}
   _syncPromise=(async()=>{
     setSync('busy');
     try{
@@ -2941,6 +2943,9 @@ async function syncNow(){
     }
     catch(e){
       console.warn('読み込み失敗',e);setSync(String(e.message)==='unauthorized'?'auth':'err');
+      // AbortControllerはブラウザの待機だけを止め、GAS側の実行は継続する。
+      // 直後に再接続すると同じ重い処理が重なるため、最低20秒は新しい同期を始めない。
+      if(String(e.message)==='timeout')_syncCooldownUntil=Date.now()+20000;
       if(String(e.message)==='unauthorized'&&!_keyPrompting){
         _keyPrompting=true;
         const k=prompt('このゼミの「合言葉」を入力してください（みんなに配られた合言葉です）');

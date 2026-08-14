@@ -1,7 +1,7 @@
 // キャッシュ優先 → 裏で更新。GASの初回応答が遅くても画面が即出る。
 // ＋ Web Push受信（本文はGASの notifyfeed から取得してロック画面に表示）
-const V = 'zemi-v54';
-const CORE = ['./', './index.html', './ai-core.js?v=54', './manifest.json?v=54', './icon-192.png', './icon-512.png'];
+const V = 'zemi-v55';
+const CORE = ['./', './index.html', './ai-core.js?v=55', './manifest.json?v=55', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

@@ -94,6 +94,9 @@ test('sync has a deadline, persists signatures, and does not overlap load with p
   assert.match(html,/if\(pending\.length&&!\(await flush\(true\)\)\)throw new Error\('save_failed'\)/);
   assert.doesNotMatch(html,/Promise\.all\(\[ flush\(true\), API\.load\(\) \]\)/);
   assert.match(html,/if\(_syncPromise\)return _syncPromise/);
+  assert.match(html,/if\(Date\.now\(\)<_syncCooldownUntil\)/);
+  assert.match(html,/if\(String\(e\.message\)==='timeout'\)_syncCooldownUntil=Date\.now\(\)\+20000/);
+  assert.match(html,/const waits=\[15000,30000,60000\]/);
 });
 
 test('ordinary members cannot edit other creators items or project structure in the UI',()=>{
