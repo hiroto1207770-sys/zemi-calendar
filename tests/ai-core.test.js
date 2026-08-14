@@ -151,6 +151,26 @@ test('multi-device login is server-confirmed and never saved optimistically',()=
   assert.match(html,/本人確認を完了できませんでした/);
 });
 
+test('PC recovery refreshes server identity before deciding whether a PIN is needed',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/async load\(options\)/);
+  assert.match(html,/!forceFull&&_sig/);
+  assert.match(html,/await API\.load\(\{forceFull:true\}\)/);
+  assert.match(html,/CLAIMS=remote\.claims;LS\.set\('claims',CLAIMS\)/);
+  assert.match(html,/DISPLAY=remote\.display;LS\.set\('display',DISPLAY\)/);
+  assert.match(html,/if\(DISPLAY\[ME\]&&!_adminUnlocked\)/);
+  assert.match(html,/CFG\.appKey=priorAppKey;\s*revert\(\)/);
+  assert.ok(html.indexOf('await API.load({forceFull:true})')<html.indexOf("prompt('「'+dispName(ME)+'」の暗証番号"));
+});
+
+test('the sync passphrase is distinct, always visible, and masked',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/<label>同期の合言葉<\/label>/);
+  assert.match(html,/<input id="c_key" type="password"/);
+  assert.match(html,/管理者パスワードや、名前を選ぶときの本人確認用暗証番号とは別/);
+  assert.doesNotMatch(html,/id="c_keyon"|id="c_keywrap"/);
+});
+
 test('privacy, identity recovery, cache scope, and Gemini data mode fail closed',()=>{
   const root=path.resolve(__dirname,'..');
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');

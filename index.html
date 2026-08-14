@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=63">
+<link rel="manifest" href="manifest.json?v=64">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -13,7 +13,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='63';
+window.__ZEMI_APP_V__='64';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -29,17 +29,17 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54'))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=63',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=64',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','63');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','64');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=63',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=64',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -658,11 +658,9 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin:4px 0 8px"><button class="no" id="c_syncnow" type="button" style="flex:1">🔄 いま同期する</button></div>
   <p class="help" id="c_syncinfo"></p>
   <input id="c_url" type="hidden"><!-- つなぎ先URLはDEFAULT_URLで固定運用。編集UIは廃止（面縮小・誤操作防止）。ICSリンク生成にのみ内部利用 -->
-  <label style="display:flex;align-items:center;gap:8px">合言葉でロック<input type="checkbox" id="c_keyon" style="width:auto;margin-left:auto"></label>
-  <div id="c_keywrap" hidden>
-    <input id="c_key" placeholder="全員で同じ合言葉">
-    <p class="help">URLを知っただけの第三者を締め出します。GAS側の <b>APP_KEY</b> に同じ値を設定（README §7）。</p>
-  </div>
+  <label>同期の合言葉</label>
+  <input id="c_key" type="password" autocomplete="off" placeholder="iPhoneとPCで同じ合言葉">
+  <p class="help">予定を同期するための合言葉です。管理者パスワードや、名前を選ぶときの本人確認用暗証番号とは別です。</p>
   <label>iPhoneカレンダーに反映</label>
   <div class="row"><input id="c_ics" readonly placeholder=""><button type="button" class="no" id="c_icscopy" style="flex:0 0 auto;padding:0 16px">コピー</button></div>
   <p class="help">このURLを iPhone「設定 → アプリ → カレンダー → カレンダーアカウント → アカウントを追加 → その他 → 照会するカレンダーを追加」へ。<b>ゼミ全体と自分が関わる予定だけ</b>が反映されます。<b>このURLはあなた専用</b>（本人だけの合言葉つき）なので、他の人には教えないでください。</p>
@@ -756,7 +754,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=63" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=64" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -769,7 +767,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'63'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'64'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -1006,11 +1004,12 @@ async function apiPost(body, _try){
 let _booted=false;   // アプリを開いた記録は起動時の1回だけサーバに残す
 let _sig=LS.get('serverSig',''),_pollN=Number(LS.get('serverPollN',0))||0; // 端末を閉じてもシグネチャを保持し、毎起動の全件取得を避ける
 const API = {
-  async load(){
+  async load(options){
+    const forceFull=!!(options&&options.forceFull);
     _pollN++;LS.set('serverPollN',_pollN);
     const myClaims=ME?(Array.isArray(CLAIMS[ME])?CLAIMS[ME]:(CLAIMS[ME]?[CLAIMS[ME]]:[])):[];
     const needIdentityMeta=!!(ME&&!myClaims.includes(DEV));
-    const useH=!!(_sig&&HAD_LOCAL_DB&&!needIdentityMeta&&(_pollN%10!==0));   // 本人情報が欠けた端末は必ず全取得
+    const useH=!!(!forceFull&&_sig&&HAD_LOCAL_DB&&!needIdentityMeta&&(_pollN%10!==0));   // 本人情報が欠けた端末・設定の再認証時は必ず全取得
     // seen/dev/ua はオンライン判定用。旧GASは未知の項目を無視するため後方互換。
     // 新GASではCacheServiceだけに短時間保持し、名簿・予定・暗証番号のシートには書き込まない。
     const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+
@@ -2573,7 +2572,6 @@ function renderMemList(){
 }
 $('#c_memaddbtn').onclick=()=>{ if(!isAdmin())return; const v=$('#c_memadd').value.trim(); if(!v)return; if(memEdit.some(m=>m.name===v)){toast('すでにいます');return;} memEdit.push({name:v,birthday:''}); $('#c_memadd').value=''; renderMemList(); refreshMeOptions(); };
 $('#c_memadd').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#c_memaddbtn').click();}});
-$('#c_keyon').onchange=()=>{ $('#c_keywrap').hidden=!$('#c_keyon').checked; };
 $('#c_syncnow').onclick=async()=>{
   const btn=$('#c_syncnow');
   if(btn.disabled)return;
@@ -2592,7 +2590,7 @@ document.querySelectorAll('#c_theme button').forEach(b=>b.onclick=()=>{ CFG.them
 /* ICSリンクは 設定シート内の入力からその場で組み立てる（名前を選んだ瞬間に表示される） */
 function refreshIcsField(){
   const me=$('#c_me').value, url=$('#c_url').value.trim();
-  const key=$('#c_keyon').checked?$('#c_key').value.trim():'';
+  const key=$('#c_key').value.trim();
   const tok=CFG.icsToken||'';   // 本人トークン（各自のURLに埋め込む・他人には教えない）
   $('#c_ics').value=(url&&me)?url+'?action=ics&me='+encodeURIComponent(me)+(tok?'&t='+encodeURIComponent(tok):'')+(key?'&key='+encodeURIComponent(key):''):'';
   $('#c_ics').placeholder=(url&&me)?'':(!url?'「つなぎ先URL」を入れると表示されます':'上で自分の名前を選ぶと表示されます');
@@ -2637,7 +2635,7 @@ function openCfg(){
   // 名簿は全員に表示。管理メニュー（追加・削除・AIキー・パス変更）は管理者パスで解錠したときだけ。
   renderMemListRO(); paintAdmin();
   $('#c_url').value=CFG.url;   // 非表示のhidden入力。ICSリンク生成に内部利用
-  $('#c_keyon').checked=!!CFG.appKey; $('#c_keywrap').hidden=!CFG.appKey; $('#c_key').value=CFG.appKey||'';
+  $('#c_key').value=CFG.appKey||'';
   renderAiStatus();   // AIキーの有無だけを表示（キー本体はサーバのみ・フロントに持たない）
   $('#c_span').checked=CFG.spanArrow!==false;
   $('#c_syncinfo').textContent='アプリ v'+APP_V+(_lastSync?'・最終同期 '+_lastSync:'');
@@ -2676,24 +2674,48 @@ $('#cfgNo').onclick=()=>$('#cfg').hidden=true;
 $('#cfgOk').onclick=async()=>{
   toast('設定を確認して保存しています…');
   CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定（編集UI廃止）
-  CFG.appKey=$('#c_keyon').checked?$('#c_key').value.trim():'';
+  const priorAppKey=CFG.appKey||'';
+  const enteredAppKey=$('#c_key').value.trim();
+  CFG.appKey=enteredAppKey;
   const wasAdmin=isAdmin();
   if(wasAdmin){ // メンバーは管理者のみ変更可（AIキーはフロントで扱わない＝サーバのGEMINI_KEYのみ）
     CFG.members=memEdit.map(m=>({...m,name:m.name,birthday:m.birthday||'',email:m.email||'',aliases:Array.isArray(m.aliases)?m.aliases:[]})).filter(m=>m.name);
   }
   CFG.spanArrow=$('#c_span').checked;
-  const priorMe=ME, priorLocked=ME_LOCKED, priorClaimed=!!(ME&&claimDevs(ME).includes(DEV));
+  const priorMe=ME, priorLocked=ME_LOCKED;
+  let priorClaimed=!!(priorMe&&claimDevs(priorMe).includes(DEV));
   const chosen=canonicalIdentityName($('#c_me').value,memEdit,DISPLAY);
   const nameChanged=!$('#c_me').disabled && chosen!==ME;
+  const revert=()=>{ ME=priorClaimed?priorMe:''; ME_LOCKED=priorClaimed?priorLocked:false; LS.set('me',ME); LS.set('meLocked',ME_LOCKED); backupIdentity(); refreshMeOptions(); };
   if(nameChanged){
     ME=chosen; _adminUnlocked=false;
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now());
       const _seen=LS.get('meUnlockSeen',{}); _seen[ME]=_unlocks[ME]||0; LS.set('meUnlockSeen',_seen); } // 一度選んだら固定（既存の解除記録は消費済みにして蒸し返さない）
   }
+  // 新しいPCに古い端末情報が残っていても、それを本人確認済みとはみなさない。
+  // 合言葉を変更した直後、または認証エラーからの復旧時は、サーバのclaims/displayを必ず全取得してからclaimする。
+  if(ME&&CFG.url&&(enteredAppKey!==priorAppKey||syncState==='auth')){
+    try{
+      const remote=await API.load({forceFull:true});
+      if(!remote||!remote.claims||typeof remote.claims!=='object') throw new Error('identity_meta_missing');
+      CLAIMS=remote.claims;LS.set('claims',CLAIMS);
+      if(remote.display&&typeof remote.display==='object'){DISPLAY=remote.display;LS.set('display',DISPLAY);}
+      if(remote.pinset&&typeof remote.pinset==='object'){PINSET=remote.pinset;LS.set('pinset',PINSET);}
+      priorClaimed=!!(priorMe&&claimDevs(priorMe).includes(DEV));
+      if(DISPLAY[ME]&&!_adminUnlocked){$('#c_disp').value=DISPLAY[ME];$('#c_disp').disabled=true;}
+      _authNotified=false;
+    }catch(e){
+      CFG.appKey=priorAppKey;
+      revert();
+      toast(String(e.message)==='unauthorized'
+        ?'同期の合言葉が違います。iPhoneと同じ合言葉を入力してください'
+        :'サーバーの本人情報を確認できませんでした。通信を確認して、もう一度保存してください');
+      return;
+    }
+  }
   // 本名の予約＋表示名の登録（サーバ共有）。
   // 本人確認＝各自の「暗証番号」。初めて選んだ人がその場で決め、以後どの端末でも同じ番号で入れる（他人は入れない）。
   if(ME&&CFG.url){
-    const revert=()=>{ ME=priorClaimed?priorMe:''; ME_LOCKED=priorClaimed?priorLocked:false; LS.set('me',ME); LS.set('meLocked',ME_LOCKED); backupIdentity(); refreshMeOptions(); };
     let pin='';
     if(!claimDevs(ME).includes(DEV)){ // この端末でまだ本人確認が済んでいないときだけ聞く
       pin=PINSET[ME]
