@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=58">
+<link rel="manifest" href="manifest.json?v=59">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -13,7 +13,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='58';
+window.__ZEMI_APP_V__='59';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -29,17 +29,17 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54'))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=58',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=59',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','58');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','59');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=58',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=59',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -756,7 +756,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=58" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=59" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -769,7 +769,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'58'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'59'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -2121,8 +2121,6 @@ async function ensureAIIdentity(){
   toast('AIを使うには、設定で自分の名前と暗証番号を確認してください');openCfg();return false;
 }
 async function openAI(){
-  if(!requireNameAI()) return;   // 名前未設定の端末はAIを開けない
-  if(!(await ensureAIIdentity()))return;
   if(!_aiSessionId) newAiSession();
   $('#ai_quick').innerHTML=AI_PRESETS.map(p=>`<button data-p="${esc(p)}">${esc(p)}</button>`).join('');
   $('#ai_quick').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#ai_q').value=b.dataset.p;askAI();});
@@ -2133,6 +2131,22 @@ $('#aiClose').onclick=()=>{ $('#aisheet').hidden=true; destroyAiSession('closed'
 $('#aiReset').onclick=()=>{ destroyAiSession('reset'); newAiSession(); toast('会話をリセットしました'); };
 $('#aisheet').onclick=e=>{if(e.target.id==='aisheet'){ $('#aisheet').hidden=true; destroyAiSession('backdrop'); }};
 $('#aiAsk').onclick=askAI;
+function localAiReplyV59(q){
+  const safe=ZemiAI.visibleSnapshot(DB,ME),items=(safe.items||[]).filter(i=>!i.deleted),tomorrow=new Date(TODAY+'T00:00:00');
+  tomorrow.setDate(tomorrow.getDate()+1);
+  const target=/明日/.test(q)?ymd(tomorrow):TODAY;
+  if(/(件数|いくつ|進捗|遅れ|期限超過|未完了)/.test(q)){
+    const open=items.filter(i=>i.type==='task'&&!taskDone(i));
+    const late=open.filter(i=>i.date&&i.date<TODAY);
+    return `閲覧できる範囲では、未完了タスクは${open.length}件、期限超過は${late.length}件です。`;
+  }
+  if(/今日|明日|予定|締切|やること|タスク/.test(q)){
+    const rows=items.filter(i=>i.date===target).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+    if(!rows.length)return `${target}の閲覧できる予定・締切はありません。`;
+    return `${target}の予定・締切です。\n`+rows.slice(0,30).map(i=>`・${i.time?i.time+' ':''}${i.title}${i.type==='task'&&!taskDone(i)?'（未完了）':''}`).join('\n');
+  }
+  return '現在は無料枠のため、予定データを外部AIへ送らないローカル回答モードです。「今日の予定」「明日の締切」「未完了はいくつ」のように質問できます。予定の追加・変更は通常の追加ボタンを使ってください。';
+}
 function buildAIContext(){
   const lines=[];
   lines.push('■プロジェクト＆係と進捗');
@@ -2205,12 +2219,12 @@ function aiExtractAdds(txt){
   return {clean:String(txt).replace(m[0],'').trim(), adds, dels, dones,plan:null};
 }
 async function askAI(){
-  if(!(await ensureAIIdentity())) return;   // 名前だけでなく、この端末の本人確認まで済んでいることを確認
   const q=$('#ai_q').value.trim(); if(!q){ $('#ai_q').focus(); return; }
-  if(!CFG.url){ toast('サーバに接続されていません'); return; }   // AIはサーバ（GASプロキシ）経由でのみ動作。キーが未設定ならサーバがエラーを返す
   $('#ai_q').value='';
   $('#ai_addwrap').hidden=true; _aiAdds=[]; _aiDels=[]; _aiDones=[];
   _aiChat.push({role:'user',text:q}); renderAiChat(true);
+  _aiChat.push({role:'model',text:localAiReplyV59(q)}); renderAiChat(false);
+  return;
   try{
     const response=await aiGenerate(null,q);
     const raw=response.plan||response;
