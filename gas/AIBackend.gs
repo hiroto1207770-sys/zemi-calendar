@@ -17,9 +17,9 @@ function dispatchAiV50_(b){
 }
 
 function aiAuthV50_(b){
-  var state=aiLoadStateV50_(), me=String(b.me||''),dev=String(b.dev||'');
+  var state=aiLoadStateV50_(), me=typeof canonicalIdentityV57_==='function'?canonicalIdentityV57_(b.me):String(b.me||''),dev=String(b.dev||'');
   if(!me||!dev)throw new Error('本人確認が必要です');
-  var claims=(state.claims||{})[me],list=Array.isArray(claims)?claims:(claims?[claims]:[]);
+  var claims=(state.claims||{})[me],list=typeof identityClaimDevsV57_==='function'?identityClaimDevsV57_(me,state.claims||{}):(Array.isArray(claims)?claims:(claims?[claims]:[]));
   if(list.indexOf(dev)<0)throw new Error('この端末は選択されたユーザーとして確認されていません');
   return {state:state,me:me,devHash:aiHashV50_(dev),isAdmin:aiIsAdminV50_(me,b),sessionId:String(b.sessionId||'').slice(0,100)};
 }

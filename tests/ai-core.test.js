@@ -139,3 +139,14 @@ test('privacy, identity recovery, cache scope, and Gemini data mode fail closed'
   assert.match(privacy,/外部送信/);
   assert.match(privacy,/保存、訂正、削除、問い合わせ/);
 });
+
+test('display names never become a second login identity',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/function canonicalIdentityName\(/);
+  assert.match(html,/function selectableMembers\(/);
+  assert.match(html,/const chosen=canonicalIdentityName\(/);
+  assert.match(html,/canonicalMe!==ME/);
+  assert.match(html,/canonicalIdentityName\(k\)===canonical/);
+  const gas=fs.readFileSync(path.resolve(__dirname,'..','gas','AIBackend.gs'),'utf8');
+  assert.match(gas,/canonicalIdentityV57_/);
+});
