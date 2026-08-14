@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=57">
+<link rel="manifest" href="manifest.json?v=58">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -13,7 +13,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='57';
+window.__ZEMI_APP_V__='58';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -29,17 +29,17 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54'))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=57',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=58',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','57');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','58');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=57',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=58',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -606,8 +606,8 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 <div class="sheet" id="aisheet" hidden><div class="box">
   <div class="grab"></div>
   <h3>AI</h3>
-  <p class="help">予定・締切・プロジェクトの状況をAIに聞けます。「明日の15時から17時にバイト入れて」のように頼むと予定の追加もできます（追加前に確認が出ます）。</p>
-  <p class="help">入力内容と必要な予定情報はGoogle Geminiへ送信されます。個人的・機密・要配慮情報は入力しないでください。<a href="privacy.html" target="_blank" rel="noopener">データの取扱い</a></p>
+  <p class="help">無料枠では外部AIへ予定を送りません。「今日の予定」「明日の締切」「未完了はいくつ」などを安全なローカル回答モードで確認できます。</p>
+  <p class="help">予定の追加・変更は通常の「＋追加」を使ってください。<a href="privacy.html" target="_blank" rel="noopener">データの取扱い</a></p>
   <div class="aiquick" id="ai_quick"></div>
   <div class="aichat" id="ai_chat" hidden></div>
   <div class="acts" id="ai_addwrap" hidden><button class="go" id="ai_addbtn" style="flex:1"></button></div>
@@ -756,7 +756,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=57" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=58" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -769,7 +769,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'57'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'58'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -2585,11 +2585,11 @@ $('#c_me').addEventListener('change',refreshIcsField);
 $('#c_url').addEventListener('input',refreshIcsField);
 $('#c_key').addEventListener('input',refreshIcsField);
 $('#c_icscopy').onclick=()=>{ const u=$('#c_ics').value; if(!u){toast('共有(URL)と自分の名前を設定してください');return;} navigator.clipboard?.writeText(u); toast('URLをコピーしました'); };
-// AIキーの有無だけを表示（真偽値はdoGetのaiReadyから。キー本体はサーバのみが保持）
+// 無料枠ではキーの有無に関係なく外部送信しない。ローカル回答モードを明示する。
 function renderAiStatus(){
   const el=$('#c_aistatus'); if(!el) return;
-  el.textContent=_aiReady?'✅ サーバにAIキーが設定済み（ゼミ全員が利用できます）':'⚠️ 未設定（管理者がGASのスクリプトプロパティ GEMINI_KEY を設定してください）';
-  el.style.color=_aiReady?'var(--ok,#2e7d32)':'var(--warn,#b26a00)';
+  el.textContent='🔒 無料枠：外部AI送信なし（予定確認はローカル回答モード）';
+  el.style.color='var(--ok,#2e7d32)';
 }
 function openCfg(){
   memEdit=CFG.members.map(m=>({...m}));

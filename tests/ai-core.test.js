@@ -150,3 +150,14 @@ test('display names never become a second login identity',()=>{
   const gas=fs.readFileSync(path.resolve(__dirname,'..','gas','AIBackend.gs'),'utf8');
   assert.match(gas,/canonicalIdentityV57_/);
 });
+
+test('free Gemini operation stays local and is disclosed',()=>{
+  const root=path.resolve(__dirname,'..');
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const gas=fs.readFileSync(path.join(root,'gas','AIBackend.gs'),'utf8');
+  const privacy=fs.readFileSync(path.join(root,'privacy.html'),'utf8');
+  assert.match(gas,/if\(!aiExternalAllowedV58_\(\)\)/);
+  assert.match(gas,/aiLocalFallbackV58_/);
+  assert.match(html,/無料枠では外部AIへ予定を送りません/);
+  assert.match(privacy,/無料枠運用ではGoogle Gemini APIへ予定・質問を送信せず/);
+});

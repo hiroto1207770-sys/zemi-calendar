@@ -35,6 +35,11 @@ function aiPlanV50_(b,ctx){
     var ap={version:1,reply:reply,needsClarification:true,candidates:names.ambiguous,operations:[]};
     aiAuditV50_(ctx,b,'clarification',reply,[],[]);return {plan:ap,local:true};
   }
+  if(!aiExternalAllowedV58_()){
+    var localReply=aiLocalFallbackV58_(q,safe,ctx.me,ctx.state.members||[]);
+    var localPlan={version:1,reply:localReply,needsClarification:false,candidates:[],operations:[]};
+    aiAuditV50_(ctx,b,'local_response',localReply,[],[]);return {plan:localPlan,local:true,external:false};
+  }
   var prompt=aiPromptV50_(q,safe,members,b.history||[],ctx.me,ctx.state.members||[]),plan=aiGeminiV50_(prompt);
   plan=aiValidatePlanV50_(plan,safe,members);
   aiAuditV50_(ctx,b,'proposal',plan.reply,plan.operations,[]);return {plan:plan,local:false};
@@ -121,6 +126,16 @@ function aiMemberTermsV50_(m){return [m.name,m.displayName,m.display,m.realName,
 function aiNormV50_(v){return String(v||'').toLowerCase().replace(/[\s　・･._\-]/g,'');}
 
 function aiLocalAnswerV50_(q,s,me,allMembers){var today=Utilities.formatDate(new Date(),Session.getScriptTimeZone()||'Asia/Tokyo','yyyy-MM-dd');if(/(件数|いくつ|進捗|遅れ|期限超過)/.test(q)){var open=s.items.filter(function(i){return i.type==='task'&&!aiTaskDoneForV51_(i,me,allMembers,s.projects);}),late=open.filter(function(i){return i.date&&i.date<today;});return '閲覧できる範囲では、あなたの未完了タスクは'+open.length+'件、期限超過は'+late.length+'件です。';}return '';}
+function aiExternalAllowedV58_(){return String(PropertiesService.getScriptProperties().getProperty('GEMINI_DATA_MODE')||'').toLowerCase()==='paid';}
+function aiLocalFallbackV58_(q,s,me,allMembers){
+  var tz=Session.getScriptTimeZone()||'Asia/Tokyo',d=new Date();if(/明日/.test(q))d.setDate(d.getDate()+1);
+  var target=Utilities.formatDate(d,tz,'yyyy-MM-dd'),rows=(s.items||[]).filter(function(i){return !i.deleted&&i.date===target;});
+  if(/今日|明日|予定|締切|やること|タスク/.test(q)){
+    if(!rows.length)return target+'の閲覧できる予定・締切はありません。';
+    return target+'の予定・締切です。\n'+rows.slice(0,30).map(function(i){return '・'+(i.time?i.time+' ':'')+i.title+(i.type==='task'&&!aiTaskDoneForV51_(i,me,allMembers,s.projects)?'（未完了）':'');}).join('\n');
+  }
+  return '現在は無料枠のため、予定データを外部AIへ送らないローカル回答モードです。「今日の予定」「明日の締切」「未完了はいくつ」のように質問できます。予定の追加・変更は通常の追加ボタンを使ってください。';
+}
 function aiPromptV50_(q,s,members,history,me,allMembers){var compact={today:Utilities.formatDate(new Date(),Session.getScriptTimeZone()||'Asia/Tokyo','yyyy-MM-dd'),projects:s.projects.map(function(p){return {id:p.id,name:p.name,teams:(p.teams||[]).map(function(t){return t.name;})};}),items:s.items.slice(0,300).map(function(i){return {id:i.id,type:i.type,title:i.title,date:i.date,time:i.time,endTime:i.endTime,pj:i.pj,team:i.team,who:i.who,done:i.type==='task'?aiTaskDoneForV51_(i,me,allMembers,s.projects):i.done,completionMode:i.completionMode||'shared',note:i.note,tentative:i.tentative};}),members:members.map(function(m){return {name:m.name,terms:aiMemberTermsV50_(m)};})};return '水野ゼミの一般ユーザー向けアシスタント。管理者操作、任意コード、未提示データを要求・推測しない。タスクのdoneは現在の利用者本人の完了状態。complete操作は各自方式なら本人だけを完了する。曖昧な名前はneedsClarification=trueで候補提示し操作を空にする。複数予定は1回で全件抽出する。質問:'+q+'\n短期履歴:'+JSON.stringify((history||[]).slice(-8))+'\n許可済みデータ:'+JSON.stringify(compact);}
 function aiGeminiV50_(prompt){var props=PropertiesService.getScriptProperties();if(String(props.getProperty('GEMINI_DATA_MODE')||'').toLowerCase()!=='paid')throw new Error('AI外部送信は管理者が有料またはWorkspace契約のデータ取扱いを確認後に有効化します');var key=props.getProperty('GEMINI_KEY');if(!key)throw new Error('AIキーが未設定です');var model=props.getProperty('GEMINI_MODEL')||AI_V50_MODEL_;var url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);var schema={type:'OBJECT',required:['version','reply','needsClarification','candidates','operations'],properties:{version:{type:'INTEGER'},reply:{type:'STRING'},needsClarification:{type:'BOOLEAN'},candidates:{type:'ARRAY',items:{type:'OBJECT'}},operations:{type:'ARRAY',items:{type:'OBJECT',required:['action'],properties:{action:{type:'STRING'},targetId:{type:'STRING'},type:{type:'STRING'},title:{type:'STRING'},date:{type:'STRING'},endDate:{type:'STRING'},time:{type:'STRING'},endTime:{type:'STRING'},projectId:{type:'STRING'},team:{type:'STRING'},who:{type:'ARRAY',items:{type:'STRING'}},visibility:{type:'STRING'},note:{type:'STRING'},tentative:{type:'BOOLEAN'},remind:{type:'STRING'}}}}}};var res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',muteHttpExceptions:true,payload:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0.1,responseMimeType:'application/json',responseJsonSchema:schema}})});if(res.getResponseCode()!==200)throw new Error('Gemini HTTP '+res.getResponseCode());return JSON.parse(JSON.parse(res.getContentText()).candidates[0].content.parts[0].text);}
 function aiValidatePlanV50_(p,s,members){if(!p||p.version!==1)throw new Error('AI出力スキーマが不正です');var allowed={version:1,reply:1,needsClarification:1,candidates:1,operations:1};Object.keys(p).forEach(function(k){if(!allowed[k])throw new Error('未許可フィールドです');});p.operations=(p.operations||[]).slice(0,100).map(function(o){if(!AI_V50_ACTIONS_[o.action])throw new Error('未許可操作です');if(['update','delete','complete','notify'].indexOf(o.action)>=0&&!o.targetId)throw new Error('対象IDがありません');if(o.targetId&&!s.items.some(function(i){return i.id===o.targetId;}))throw new Error('対象への閲覧権限がありません');return o;});return {version:1,reply:String(p.reply||'').slice(0,2000),needsClarification:!!p.needsClarification,candidates:(p.candidates||[]).slice(0,20),operations:p.needsClarification?[]:p.operations};}
