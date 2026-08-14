@@ -24,6 +24,8 @@ test('project mutations require verified admin',()=>{
 test('new items are attributed to the verified caller',()=>{
   const out=ctx.secureChangedV54_({items:[{id:'new',type:'event',createdBy:'A'}]},base(),{me:'B',isAdmin:false});
   assert.equal(out.items[0].createdBy,'B');
+  const restricted=base();restricted.projects=[{id:'p1',teams:[{name:'班1',members:['A']}]}];
+  assert.throws(()=>ctx.secureChangedV54_({items:[{id:'new2',type:'event',pj:'p1',team:'班1'}]},restricted,{me:'B',isAdmin:false}),/登録/);
 });
 
 test('non-owners cannot rewrite another creators item',()=>{
@@ -46,13 +48,21 @@ test('members may append one attributed comment without rewriting the item',()=>
   assert.equal(out.comments[0].text,'hello');
 });
 
+test('hidden items, unsafe ids, and oversized batches are rejected',()=>{
+  const hidden=base();hidden.items[0].visibility='members';hidden.items[0].who=['A'];
+  const incoming={...hidden.items[0],comments:[{text:'probe'}]};
+  assert.throws(()=>ctx.secureChangedV54_({items:[incoming]},hidden,{me:'B',isAdmin:false}),/閲覧/);
+  assert.throws(()=>ctx.secureChangedV54_({items:[{id:'__proto__'}]},base(),{me:'B',isAdmin:false}),/ID/);
+  assert.throws(()=>ctx.secureChangedV54_({items:Array.from({length:501},(_,i)=>({id:'x'+i}))},base(),{me:'B',isAdmin:false}),/件数/);
+});
+
 test('AI asks for a name only when a registered alias is genuinely ambiguous',()=>{
   const ai={};vm.createContext(ai);
   vm.runInContext(fs.readFileSync(path.resolve(__dirname,'..','gas','AIBackend.gs'),'utf8'),ai);
   const members=[
-    {name:'椙山真衣',displayName:'まい',aliases:['まい']},
-    {name:'山田芽衣',displayName:'めい',aliases:['まい']}
+    {name:'テスト花子',displayName:'はな',aliases:['はな']},
+    {name:'例示華',displayName:'はな',aliases:['はな']}
   ];
   assert.equal(ai.aiResolveNamesV50_('今日の予定を教えて',members).ambiguous.length,0);
-  assert.equal(ai.aiResolveNamesV50_('まいの予定を教えて',members).ambiguous.length,1);
+  assert.equal(ai.aiResolveNamesV50_('はなの予定を教えて',members).ambiguous.length,1);
 });

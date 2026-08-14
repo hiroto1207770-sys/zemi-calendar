@@ -5,18 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=55">
+<link rel="manifest" href="manifest.json?v=56">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;600;700&display=swap" rel="stylesheet">
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='55';
+window.__ZEMI_APP_V__='56';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -30,19 +27,19 @@ window.__zemiShowBootError=function(){
 };
 window.__zemiSafeReload=async function(){
   try{
-    if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-v')))await caches.delete(k);}
+    if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54'))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=55',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=56',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','54');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','56');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=55',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=56',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -610,6 +607,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="grab"></div>
   <h3>AI</h3>
   <p class="help">予定・締切・プロジェクトの状況をAIに聞けます。「明日の15時から17時にバイト入れて」のように頼むと予定の追加もできます（追加前に確認が出ます）。</p>
+  <p class="help">入力内容と必要な予定情報はGoogle Geminiへ送信されます。個人的・機密・要配慮情報は入力しないでください。<a href="privacy.html" target="_blank" rel="noopener">データの取扱い</a></p>
   <div class="aiquick" id="ai_quick"></div>
   <div class="aichat" id="ai_chat" hidden></div>
   <div class="acts" id="ai_addwrap" hidden><button class="go" id="ai_addbtn" style="flex:1"></button></div>
@@ -743,6 +741,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   </div>
   <input type="file" id="c_file" accept="application/json,.json" hidden>
   <p class="help">全データをファイルに保存・復元できます。共有中はスプレッドシートの版履歴も常時バックアップです。</p>
+  <p class="help"><a href="privacy.html" target="_blank" rel="noopener">プライバシー・データの取扱い</a>（利用目的、外部送信、保存・削除、問い合わせ方法）</p>
   <div class="acts"><button class="no" id="cfgNo">やめる</button><button class="go" id="cfgOk">保存する</button></div>
 </div></div>
 
@@ -757,7 +756,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=55" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=56" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -770,18 +769,22 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'55'; // ※sw.js の V(zemi-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'56'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
 // localStorageが飛んでも自動で復元する。復元は「名簿にある正しい名前」に限る（データ汚染防止のバリデーション）。
 const CK = {
-  set(k,v){ try{ document.cookie = k+'='+encodeURIComponent(v)+';max-age=34560000;path=/;samesite=lax'; }catch(e){} }, // 400日
+  set(k,v){ try{ document.cookie = k+'='+encodeURIComponent(v)+';max-age=34560000;path=/;samesite=strict;secure'; }catch(e){} }, // 400日
   get(k){ try{ const m=document.cookie.match('(?:^|; )'+k.replace(/([.*+?^${}()|[\]\\])/g,'\\$1')+'=([^;]*)'); return m?decodeURIComponent(m[1]):null; }catch(e){ return null; } }
 };
 const IDCK='zemi_id';
 function backupIdentity(){   // 現在の身元情報をCookieへ退避（localStorageと二重化）
-  try{ CK.set(IDCK, JSON.stringify({me:ME,dev:DEV,ml:ME_LOCKED?1:0,mla:LS.get('meLockedAt',0)})); }catch(e){}
+  try{
+    const old=JSON.parse(CK.get(IDCK)||'null');
+    if(!ME&&old&&old.me)return;
+    CK.set(IDCK, JSON.stringify({me:ME,dev:DEV,ml:ME_LOCKED?1:0,mla:LS.get('meLockedAt',0)}));
+  }catch(e){}
 }
 // 管理者デバイスシークレット（タスク6）：初回パス認証時にサーバが発行→この端末のCookie(400日)＋localStorageに固定。
 // 以降はパスワード不要でこのシークレットにより自動デバイス認証。値はサーバのmetaにも保存され二重検証される。
@@ -790,7 +793,8 @@ function adminSecret(){ return CK.get(ADMSEC_CK) || LS.get('admsec','') || ''; }
 function setAdminSecret(s){ if(!s) return; CK.set(ADMSEC_CK, s); LS.set('admsec', s); }
 
 // 初期名簿は本名（サーバの名簿が正だが、初回起動・同期前でも正しい名前が出るように）
-const MEMBERS0 = ['田中大翔','根津柚花','村山美織梨','大野萌衣','上野さくら','東久保結衣','鈴木彩花','市岡佑梨菜','大塚莉乃','泉谷宗汰','椙山真衣','菅原月碧','会田葵'].map(n=>({name:n}));
+// 実名簿を公開HTMLへ埋め込まない。正式な名簿は認証後にGASから取得する。
+const MEMBERS0 = [];
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
 const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', icsToken:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定運用（フロントからの編集・保存を廃止＝プロキシ宛先を固定）
@@ -800,18 +804,15 @@ if(('geminiKey' in CFG)||('geminiModel' in CFG)||('adminPass' in CFG)){ delete C
 // 名前未設定の端末は毎回入力を求める（＝合言葉を知っていれば閲覧はできるが、開くたびに要入力）。
 // 番号つきの旧モデルは次々に廃止される（limit:0 / no longer available エラー）→「自動選択」へ移行
 // 開発初期のひらがな名簿が残っている端末は本名リストへ自動移行（正式な名簿は次の同期でサーバから届く）
-if((CFG.members||[]).some(m=>['みおり','ゆいの','そうた'].includes(m.name))){ CFG.members=MEMBERS0.map(m=>({...m})); LS.set('cfg',CFG); }
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
-if(JSON.stringify((CFG.members||[]).map(m=>typeof m==='string'?m:m.name))===JSON.stringify(['大翔','山田','佐藤','鈴木','高橋'])){ CFG.members=MEMBERS0.map(m=>({...m})); }
 // メンバーは {name, birthday} に正規化（旧データは文字列配列や nick 付き）
 CFG.members=(CFG.members||[]).map(m=> typeof m==='string'?{name:m,birthday:'',email:'',aliases:[]}:{...m,name:m.name||'',birthday:m.birthday||'',email:m.email||'',aliases:Array.isArray(m.aliases)?m.aliases:[]}).filter(m=>m.name);
 LS.set('cfg',CFG);
 let ME = LS.get('me', '');
-if(!ME) CFG.appKey='';   // 名前未設定の端末は合言葉を記憶しない＝開くたびに毎回入力を求める（名前を選んだ端末だけ記憶）
 let ME_LOCKED = LS.get('meLocked', false); // 一度選んだ名前は変更不可（管理者パスワードで解除）
 let _aiReady=false;  // AIキーがサーバに設定済みか（doGetのaiReadyで更新。キー本体はフロントに一切持たない）
 let _adminEmail=''; // 管理者の警告メール通知先（表示用。サーバが正）
-const ADMIN_DEFAULT = '田中大翔';           // 管理者メニューを出す本名（この人が選ばれたときだけ表示。ほかの人には管理者の存在を見せない）
+const ADMIN_DEFAULT = '';                   // 管理者名は公開HTMLへ埋め込まず、GASのmetaを正とする
 let ADMIN_NAME = (CFG.adminName||'');       // 管理者にできる本名（metaで共有）。空=未登録（最初にパス解錠した人が自動登録）
 let ADMIN_OK = false;                       // この起動セッションで管理者パスを通したか（端末をまたがない＝アプリを開くたびに要入力）
 let _unlocks = {};                          // サーバの最新ロック解除記録 {本名:解除ts}（applyMetaで更新。時計非依存の消費判定に使う）
@@ -824,7 +825,7 @@ function requireNameAI(){ if(ME) return true; toast('AIアシスタントは、�
 const isAdmin = () => !!(ADMIN_OK && ME && (ADMIN_NAME==='' || ME===ADMIN_NAME));
 // 管理者端末として一度サーバ確認済みの端末は、同期中・一時オフラインでも管理UIを隠さない。
 // 実際の管理APIは引き続きサーバ側のsecret検証を必須にする。
-const hasAdminIdentity = () => !!(ME&&adminSecret()&&(ME===(ADMIN_NAME||ADMIN_DEFAULT)));
+const hasAdminIdentity = () => !!(ME&&ADMIN_NAME&&adminSecret()&&ME===ADMIN_NAME);
 const canManageApp = () => isAdmin()||hasAdminIdentity();
 const canModifyItem = i => !!(i&&ME&&(canManageApp()||i.createdBy===ME));
 let DEV = LS.get('dev','');   // この端末の識別子（本名の予約に使う）
@@ -848,7 +849,8 @@ let _idRestored=false, _wiped=false;
     const c=JSON.parse(raw); if(!c||typeof c!=='object') return;
     // Cookieに名前があるのにlocalStorageから消えている＝この端末はデータが飛んだ（揮発）と判断
     if(c.me && !ME) _wiped=true;
-    if(!ME && c.me && (CFG.members||[]).some(m=>m.name===c.me)){                                  // 名前の復元（名簿検証つき＝汚染防止）
+    // 最終的な本人性はGASのclaimsで再検証する。同じ端末IDのCookieなら起動時に復元する。
+    if(!ME && c.me && c.dev && String(c.dev)===DEV){
       ME=String(c.me); LS.set('me',ME); _idRestored=true; _wiped=false;                           // 自動復元できたので再紐付けUIは出さない
       if(c.ml){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',Number(c.mla)||now()); }
     }
@@ -919,17 +921,7 @@ function seed(){
     ]
   };
 }
-const PERSONAL_PHOTO_TASK_ID='i1784377321420';
-const PERSONAL_PHOTO_TASK_TITLE='夏休み課題個人写メールin登戸';
-const PERSONAL_PHOTO_MIGRATION='v51-personal-photo-miori';
-function migrateKnownTaskCompletion(i,t){
-  const compact=String(i.title||'').replace(/[\s　]/g,'');
-  if(i.id!==PERSONAL_PHOTO_TASK_ID||compact!==PERSONAL_PHOTO_TASK_TITLE)return;
-  if(ZemiAI.migrateTaskCompletion(i,['村山美織梨'],PERSONAL_PHOTO_MIGRATION,t)){
-    const q=LS.get('completionMigrationPending',[]),ids=Array.isArray(q)?q:[];
-    if(!ids.includes(i.id))ids.push(i.id);LS.set('completionMigrationPending',ids);
-  }
-}
+function migrateKnownTaskCompletion(){ /* v51の個別移行はサーバ反映済み。公開コードへ個人名を残さない。 */ }
 function migrate(db){
   if(!db||!db.projects) db=seed();
   const t=now();
@@ -957,8 +949,11 @@ function migrate(db){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const API_TIMEOUT_MS=7000;
 const AI_TIMEOUT_MS=25000;
+let _syncDeadline=0;
 async function fetchTimed(url,options,timeoutMs){
-  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs||API_TIMEOUT_MS);
+  let limit=timeoutMs||API_TIMEOUT_MS;
+  if(_syncDeadline)limit=Math.max(1,Math.min(limit,_syncDeadline-Date.now()));
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),limit);
   try{return await fetch(url,{...(options||{}),signal:ctl.signal});}
   catch(e){if(e&&e.name==='AbortError')throw new Error('timeout');throw e;}
   finally{clearTimeout(timer);}
@@ -2173,8 +2168,10 @@ async function aiGenerate(x,q){
     // 旧GASは未対応actionに旧形式の応答を返すことがある。
     return legacy();
   }catch(e){
-    if(/timeout|NetworkError|Failed to fetch|load failed|HTTP 5/i.test(String(e.message||e)))throw e;
-    return legacy();
+    const msg=String(e.message||e);
+    // 認証・認可・データ取扱い上の拒否を旧経路で迂回しない。旧GASの「未対応」時だけ読み取り専用へ退避する。
+    if(/unknown action|未対応の操作|action not found/i.test(msg))return legacy();
+    throw e;
   }
 }
 /* AIの回答から「予定の追加・削除・完了の提案」ブロックを取り出す */
@@ -2280,12 +2277,12 @@ async function checkAdminPass(p){
   try{ const r=await apiPost({action:'checkadminpass',pass:p}); return !!(r&&r.ok); }catch(e){ return false; }
 }
 function paintAdmin(){
-  // 管理者メニューは「田中大翔」を選んだ端末だけに表示（初回の名前登録中や他の人には一切出さない）
-  const eligible = !!ME && (ME===ADMIN_NAME || (ADMIN_NAME==='' && ME===ADMIN_DEFAULT));
+  // 登録後はサーバの管理者名だけ、未登録時はパスワードを知る利用者だけが登録できる。
+  const eligible = !!ME && (ADMIN_NAME==='' || ME===ADMIN_NAME);
   const on = isAdmin();
   $('#adminWrap').hidden = !on;
   const b=$('#c_adminBtn'); if(b) b.style.display = on ? 'none' : (eligible ? '' : 'none');
-  // 監査セクションは「田中大翔（登録管理者）が解錠中」なら表示。実際に押せるのは「管理者シークレット保持時のみ」
+  // 監査セクションは登録管理者が解錠中のときだけ表示。実際に押せるのは管理者シークレット保持時のみ。
   // （サーバも name＋secret を二重検証）。未登録の端末はボタンを無効化して理由を明示する。
   const aw=$('#c_auditWrap');
   if(aw){
@@ -2361,14 +2358,14 @@ $('#c_auditBtn').onclick=async()=>{
 };
 // c) クライアント側の診断：キャッシュ保持状態・SW版・ローカルデータ量
 async function clientDiag(){
-  let swV='?'; try{ const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text(); swV=(t.match(/zemi-v\d+/)||['?'])[0]; }catch(e){}
+  let swV='?'; try{ const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text(); swV=(t.match(/zemi-calendar-v\d+/)||['?'])[0]; }catch(e){}
   let cacheNames=[]; try{ if(window.caches) cacheNames=await caches.keys(); }catch(e){}
   const dbBytes=(localStorage.getItem('db')||'').length;
   let storageOK=false,cookieOK=false;
   try{ const k='zemi_diag_'+Date.now(); localStorage.setItem(k,'1'); storageOK=localStorage.getItem(k)==='1'; localStorage.removeItem(k); }catch(e){}
   try{ CK.set('zemi_diag','1'); cookieOK=CK.get('zemi_diag')==='1'; }catch(e){}
   return {
-    swV,appV:'zemi-v'+APP_V,swMatch:swV===('zemi-v'+APP_V),
+    swV,appV:'zemi-calendar-v'+APP_V,swMatch:swV===('zemi-calendar-v'+APP_V),
     cacheCount:cacheNames.length,cacheNames:cacheNames.slice(0,4),dbKB:Math.round(dbBytes/1024),
     storageOK,cookieOK,network:navigator.onLine?'online':'offline',
     secure:window.isSecureContext,swControlled:!!navigator.serviceWorker?.controller,
@@ -2543,11 +2540,15 @@ $('#c_memaddbtn').onclick=()=>{ if(!isAdmin())return; const v=$('#c_memadd').val
 $('#c_memadd').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#c_memaddbtn').click();}});
 $('#c_keyon').onchange=()=>{ $('#c_keywrap').hidden=!$('#c_keyon').checked; };
 $('#c_syncnow').onclick=async()=>{
+  const btn=$('#c_syncnow');
+  if(btn.disabled)return;
+  btn.disabled=true;
   $('#c_syncinfo').textContent='同期しています…';
-  await syncNow();
-  const st={ok:'接続OK',err:'接続エラー',auth:'⚠合言葉が違います/未入力',off:'未共有'}[syncState]||'';
-  _lastSync=new Date().toLocaleTimeString();
-  $('#c_syncinfo').textContent=`完了 ${_lastSync}（アプリ v${APP_V}・${st}）`;
+  try{
+    const ok=await syncNow();
+    const st={ok:'接続OK',err:'接続エラー（端末データで表示・再接続待ち）',auth:'⚠合言葉が違います/未入力',off:'未共有'}[syncState]||'';
+    $('#c_syncinfo').textContent=ok?`完了 ${_lastSync}（アプリ v${APP_V}・${st}）`:`${st}（アプリ v${APP_V}）`;
+  }finally{btn.disabled=false;}
 };
 /* ロゴは水野ゼミのマーク（logo.png）で固定。差し替えUIは廃止。 */
 function applyLogo(){ const img=$('#brandLogo'); if(!img)return; img.src='logo.png'; img.style.display='block'; if(img.nextElementSibling) img.nextElementSibling.style.display='none'; }
@@ -2591,7 +2592,7 @@ function openCfg(){
   $('#c_disp').value=ME?(DISPLAY[ME]||''):'';
   $('#c_disp').disabled=dispLocked;
   if(nameLocked||dispLocked){
-    // 変更用ボタンは「田中大翔」の端末にだけ出す（ほかの人には管理者の存在を見せない）。
+    // 変更用ボタンは登録管理者の端末にだけ出す（ほかの人には管理者の存在を見せない）。
     const canChange = ME===ADMIN_NAME || (ADMIN_NAME==='' && ME===ADMIN_DEFAULT);
     $('#c_mehelp').innerHTML=`「${esc(ME)}」で利用中`+(canChange?`　<button type="button" id="c_meunlock" style="background:none;border:none;color:#a9884f;text-decoration:underline;cursor:pointer;font-size:12px;padding:0">変更する</button>`:'');
     const b=$('#c_meunlock'); if(b) b.onclick=async()=>{ const p=prompt('パスワードを入力してください'); if(p===null)return; if(await checkAdminPass(p)){ _adminUnlocked=true; $('#c_me').disabled=false; $('#c_disp').disabled=false; $('#c_mehelp').textContent='名前を選び直せます（保存で確定）。'; } else { toast('パスワードが違います'); } };
@@ -2915,6 +2916,7 @@ async function syncNow(){
   if(_syncPromise)return _syncPromise;
   if(Date.now()<_syncCooldownUntil){setSync('err');scheduleSyncRetry();return false;}
   _syncPromise=(async()=>{
+    _syncDeadline=Date.now()+API_TIMEOUT_MS;
     setSync('busy');
     try{
       // 未送信があるときだけ先に保存してから取得する。GET/POSTの競合による二重取得と再送を防ぐ。
@@ -2946,19 +2948,16 @@ async function syncNow(){
       // AbortControllerはブラウザの待機だけを止め、GAS側の実行は継続する。
       // 直後に再接続すると同じ重い処理が重なるため、最低20秒は新しい同期を始めない。
       if(String(e.message)==='timeout')_syncCooldownUntil=Date.now()+20000;
-      if(String(e.message)==='unauthorized'&&!_keyPrompting){
-        _keyPrompting=true;
-        const k=prompt('このゼミの「合言葉」を入力してください（みんなに配られた合言葉です）');
-        _keyPrompting=false;
-        if(k!==null&&k.trim()){CFG.appKey=k.trim();LS.set('cfg',CFG);setTimeout(syncNow,0);}
+      if(String(e.message)==='unauthorized'){
+        if(!_authNotified){toast('合言葉を設定画面から入力してください');_authNotified=true;}
       }else scheduleSyncRetry();
       return false;
     }
-    finally{_syncPromise=null;}
+    finally{_syncDeadline=0;_syncPromise=null;}
   })();
   return _syncPromise;
 }
-let _keyPrompting=false;
+let _authNotified=false;
 /* 初回チュートリアル */
 const TUT=[
   ['ようこそ！','「水野ゼミ カレンダー」はゼミ全員で予定・やること・プロジェクトを共有するアプリです。データは自動で同期されるので、いつ開いても最新です。下のタブで画面を切りかえます。'],
@@ -3025,12 +3024,12 @@ boot().catch(e=>{
   }
   try{ // 古いキャッシュのHTMLで起動してしまったら、キャッシュを捨てて一度だけ自動リロード
     const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();
-    const m=t.match(/zemi-v(\d+)/);
+    const m=t.match(/zemi-(?:calendar-)?v(\d+)/);
     if(m && m[1]!==APP_V){
       const key='verReload:'+m[1],attempt=Number(sessionStorage.getItem(key)||0);
       if(attempt<3){
         sessionStorage.setItem(key,String(attempt+1));
-        if(window.caches){ const ks=await caches.keys(); for(const k of ks.filter(x=>x.startsWith('zemi-v'))) await caches.delete(k); }
+        if(window.caches){ const ks=await caches.keys(); for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54')) await caches.delete(k); }
         if('serviceWorker' in navigator){ const r=await navigator.serviceWorker.getRegistration(); if(r)try{await r.update();}catch(_){} }
         const u=new URL(location.href);u.searchParams.set('v',m[1]);u.searchParams.set('reload',String(attempt+1));
         location.replace(u.href);
@@ -3045,12 +3044,6 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 window.addEventListener('pagehide',beaconFlush);
 window.addEventListener('online',syncNow);
 window.addEventListener('focus',()=>{ if(CFG.url)syncNow(); });
-if('serviceWorker' in navigator){
-  // 旧URL（/zemi-daicho/）時代の亡霊Service Workerを掃除（古い画面を配信し続けてデータ混同のもとになる）
-  if(location.hostname.endsWith('github.io')){
-    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>{ if(!r.scope.includes('/zemi-calendar')) r.unregister().catch(()=>{}); })).catch(()=>{});
-  }
-}
 </script>
 </body>
 </html>

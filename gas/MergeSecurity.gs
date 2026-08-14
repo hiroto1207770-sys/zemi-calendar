@@ -11,19 +11,27 @@
  */
 function secureChangedV54_(changed,state,ctx){
   changed=changed||{};state=state||{};ctx=ctx||{};
+  var rawSize=JSON.stringify(changed).length;
+  if(rawSize>500000)throw new Error('送信データが大きすぎます');
   var me=String(ctx.me||'');
   if(!me)throw new Error('本人確認が必要です');
   var currentProjects=indexByIdV54_(state.projects||[]),currentItems=indexByIdV54_(state.items||[]);
-  var projects=(changed.projects||[]).map(function(p){
+  var projectRows=Array.isArray(changed.projects)?changed.projects:[],itemRows=Array.isArray(changed.items)?changed.items:[];
+  if(projectRows.length>100||itemRows.length>500)throw new Error('一度に送信できる件数を超えています');
+  var projects=projectRows.map(function(p){
     if(!ctx.isAdmin)throw new Error('プロジェクト構成は管理者だけが変更できます');
+    assertSafeIdV54_(p&&p.id);
     return p;
   });
-  var items=(changed.items||[]).map(function(incoming){
+  var items=itemRows.map(function(incoming){
     if(!incoming||!incoming.id)throw new Error('不正なデータです');
+    assertSafeIdV54_(incoming.id);
     var old=currentItems[incoming.id];
     if(!old){
       var created=JSON.parse(JSON.stringify(incoming));
-      created.createdBy=me;created.updatedAt=Date.now();return created;
+      created.createdBy=me;
+      if(!canSeeItemV54_(created,me,state.projects||[]))throw new Error('指定した公開範囲または班に登録されていません');
+      created.updatedAt=Date.now();return created;
     }
     if(ctx.isAdmin||old.createdBy===me)return incoming;
     return secureMemberDeltaV54_(old,incoming,me,state.members||[],state.projects||[]);
@@ -32,6 +40,7 @@ function secureChangedV54_(changed,state,ctx){
 }
 
 function secureMemberDeltaV54_(old,incoming,me,members,projects){
+  if(!canSeeItemV54_(old,me,projects))throw new Error('この項目を閲覧する権限がありません');
   var out=JSON.parse(JSON.stringify(old)),changed=false,ts=Date.now();
   // 担当タスクの本人分の完了状態だけを受け付ける。
   if(old.type==='task'&&old.completionMode==='individual'){
@@ -60,4 +69,11 @@ function secureMemberDeltaV54_(old,incoming,me,members,projects){
   out.updatedAt=ts;return out;
 }
 
-function indexByIdV54_(rows){var out={};(rows||[]).forEach(function(x){if(x&&x.id)out[x.id]=x;});return out;}
+function assertSafeIdV54_(id){id=String(id||'');if(!id||id.length>100||id==='__proto__'||id==='prototype'||id==='constructor')throw new Error('不正なIDです');}
+function canSeeItemV54_(i,me,projects){
+  if(!i||i.deleted)return false;
+  if(i.visibility==='members'&&Array.isArray(i.who)&&i.who.indexOf(me)<0&&i.createdBy!==me)return false;
+  if(i.team){var p=(projects||[]).filter(function(x){return x&&x.id===i.pj;})[0],t=p&&(p.teams||[]).filter(function(x){return x&&x.name===i.team;})[0];if(!t||(t.members||[]).indexOf(me)<0)return false;}
+  return true;
+}
+function indexByIdV54_(rows){var out=Object.create(null);(rows||[]).forEach(function(x){if(x&&x.id){assertSafeIdV54_(x.id);out[x.id]=x;}});return out;}

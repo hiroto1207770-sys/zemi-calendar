@@ -5,9 +5,9 @@ const path=require('node:path');
 const AI=require('../ai-core.js');
 
 test('aliases resolve but ambiguous initials do not auto-resolve',()=>{
-  const ms=[{name:'椙山真衣',displayName:'まい',kana:'すぎやままい',aliases:['M']},{name:'山田芽衣',displayName:'めい',kana:'やまだめい',aliases:['M']}];
-  assert.equal(AI.resolveName('まい',ms).member.name,'椙山真衣');
-  assert.equal(AI.resolveName('M',ms).status,'ambiguous');
+  const ms=[{name:'テスト花子',displayName:'はな',kana:'てすとはなこ',aliases:['hana']},{name:'例示華',displayName:'はな',kana:'れいじはな',aliases:['hana']}];
+  assert.equal(AI.resolveName('テスト花子',ms).member.name,'テスト花子');
+  assert.equal(AI.resolveName('hana',ms).status,'ambiguous');
 });
 test('private and team data are excluded for outsiders',()=>{
   const db={projects:[{id:'p',teams:[{name:'Boost',members:['A']}]}],items:[
@@ -47,14 +47,14 @@ test('per-member completion merges by each member timestamp',()=>{
   const merged=AI.mergeDoneBy({A:{done:true,at:100},B:{done:false,at:120}},{A:{done:false,at:90},B:{done:true,at:130}});
   assert.deepEqual(merged,{A:{done:true,at:100},B:{done:true,at:130}});
 });
-test('existing personal assignment migration keeps only the confirmed member complete',()=>{
+test('personal assignment migration keeps only the confirmed member complete',()=>{
   const task={id:'i1',type:'task',done:true,doneAt:90,updatedAt:90};
-  assert.equal(AI.migrateTaskCompletion(task,['村山美織梨'],'v51-personal-photo',100),true);
+  assert.equal(AI.migrateTaskCompletion(task,['利用者A'],'v51-personal-task',100),true);
   assert.equal(task.completionMode,'individual');
-  assert.deepEqual(task.doneBy,{'村山美織梨':{done:true,at:100}});
+  assert.deepEqual(task.doneBy,{'利用者A':{done:true,at:100}});
   assert.equal(task.done,false);
-  assert.equal(AI.migrateTaskCompletion(task,['別の人'],'v51-personal-photo',200),false);
-  assert.deepEqual(Object.keys(task.doneBy),['村山美織梨']);
+  assert.equal(AI.migrateTaskCompletion(task,['別の人'],'v51-personal-task',200),false);
+  assert.deepEqual(Object.keys(task.doneBy),['利用者A']);
 });
 test('app version is initialized before startup and matches the service worker',()=>{
   const root=path.resolve(__dirname,'..');
@@ -62,7 +62,7 @@ test('app version is initialized before startup and matches the service worker',
   const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
   const manifest=fs.readFileSync(path.join(root,'manifest.json'),'utf8');
   const appVersion=(html.match(/window\.__ZEMI_APP_V__='(\d+)'/)||[])[1];
-  const workerVersion=(sw.match(/const V = 'zemi-v(\d+)'/)||[])[1];
+  const workerVersion=(sw.match(/const V = 'zemi-calendar-v(\d+)'/)||[])[1];
   assert.ok(appVersion,'APP_V must be declared');
   assert.equal(workerVersion,appVersion);
   assert.match(html,new RegExp(`ai-core\\.js\\?v=${appVersion}`));
@@ -77,7 +77,7 @@ test('startup recovery works before app code and service worker never returns HT
   const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
   assert.ok(html.indexOf('window.__zemiSafeReload')<html.indexOf('src="ai-core.js'));
   assert.match(html,/id="bootGuard"/);
-  assert.match(html,/filter\(x=>x\.startsWith\('zemi-v'\)\)/);
+  assert.match(html,/startsWith\('zemi-calendar-v'\)/);
   assert.match(html,/updateViaCache:'none'/);
   const v=(html.match(/window\.__ZEMI_APP_V__='(\d+)'/)||[])[1];
   assert.match(sw,new RegExp(`ai-core\\.js\\?v=${v}`));
@@ -97,6 +97,8 @@ test('sync has a deadline, persists signatures, and does not overlap load with p
   assert.match(html,/if\(Date\.now\(\)<_syncCooldownUntil\)/);
   assert.match(html,/if\(String\(e\.message\)==='timeout'\)_syncCooldownUntil=Date\.now\(\)\+20000/);
   assert.match(html,/const waits=\[15000,30000,60000\]/);
+  assert.match(html,/_syncDeadline=Date\.now\(\)\+API_TIMEOUT_MS/);
+  assert.match(html,/Math\.min\(limit,_syncDeadline-Date\.now\(\)\)/);
 });
 
 test('ordinary members cannot edit other creators items or project structure in the UI',()=>{
@@ -107,11 +109,33 @@ test('ordinary members cannot edit other creators items or project structure in 
   assert.match(html,/プロジェクト構成は管理者だけが変更できます/);
 });
 
-test('AI verifies the device and keeps a read-only fallback for the legacy GAS route',()=>{
+test('AI verifies the device and only falls back when the GAS action is unsupported',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
   assert.match(html,/async function ensureAIIdentity\(\)/);
   assert.match(html,/action:'aiPlan'/);
   assert.match(html,/action:'ai',contents/);
   assert.match(html,/読み取り専用互換モード/);
+  assert.match(html,/unknown action\|未対応の操作\|action not found/);
+  assert.doesNotMatch(html,/if\(\/timeout.*throw e;\s*return legacy\(\)/s);
   assert.match(html,/body\.name=body\.name\|\|ME/);
+});
+
+test('privacy, identity recovery, cache scope, and Gemini data mode fail closed',()=>{
+  const root=path.resolve(__dirname,'..');
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
+  const gas=fs.readFileSync(path.join(root,'gas','AIBackend.gs'),'utf8');
+  const privacy=fs.readFileSync(path.join(root,'privacy.html'),'utf8');
+  assert.match(html,/const MEMBERS0 = \[\]/);
+  assert.doesNotMatch(html,/みおり|ゆいの|そうた|大翔|山田|佐藤|鈴木|高橋/);
+  assert.doesNotMatch(html,/prompt\('このゼミの「合言葉」/);
+  assert.match(html,/if\(!ME&&old&&old\.me\)return/);
+  assert.match(html,/samesite=strict;secure/);
+  assert.doesNotMatch(html,/\.unregister\(/);
+  assert.match(sw,/zemi-calendar-v/);
+  assert.match(gas,/GEMINI_DATA_MODE/);
+  assert.match(gas,/!==['"]paid['"]/);
+  assert.match(privacy,/利用目的/);
+  assert.match(privacy,/外部送信/);
+  assert.match(privacy,/保存、訂正、削除、問い合わせ/);
 });
