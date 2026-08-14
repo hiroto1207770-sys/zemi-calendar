@@ -138,6 +138,7 @@ test('a targeted server logout clears only the currently selected identity witho
   const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
   assert.match(html,/function clearSelectedIdentity\(\)/);
   assert.match(html,/\/\^logout:\/\.test/);
+  assert.match(html,/if\(identityResetKey\(ME\)==='b9tpvp'&&!LS\.get\('identityResetV61',false\)\)/);
   assert.doesNotMatch(html,/localStorage\.clear\(\)/);
 });
 
