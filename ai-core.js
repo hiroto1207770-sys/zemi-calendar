@@ -15,6 +15,7 @@
     if(Array.isArray(i.who)&&i.who.length) return uniq(i.who.map(text));
     if(i.team){
       const p=(projects||[]).find(p=>p.id===(i.teamPj||i.pj));
+      if(p&&String(p.name||'').normalize('NFKC').trim()==='ゼミ') return uniq((members||[]).map(memberName));
       const tm=p&&(p.teams||[]).find(t=>t.name===i.team);
       if(tm) return uniq((tm.members||[]).map(text));
       if(p&&p.name===i.team) return uniq((p.members||[]).map(text));

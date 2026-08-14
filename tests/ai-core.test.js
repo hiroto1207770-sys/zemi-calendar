@@ -100,6 +100,12 @@ test('sync has a deadline, persists signatures, and does not overlap load with p
   assert.match(html,/_syncDeadline=Date\.now\(\)\+API_TIMEOUT_MS/);
   assert.match(html,/Math\.min\(limit,_syncDeadline-Date\.now\(\)\)/);
 });
+test('seminar membership follows the member registry instead of a visible project roster',()=>{
+  const members=[{name:'A'},{name:'B'},{name:'C'}];
+  const projects=[{id:'zemi',name:'ゼミ',members:['A'],teams:[]}];
+  const task={type:'task',pj:'zemi',team:'ゼミ',completionMode:'individual',done:false,doneBy:{}};
+  assert.deepEqual(AI.taskTargets(task,members,projects),['A','B','C']);
+});
 
 test('ordinary members cannot edit other creators items or project structure in the UI',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
@@ -118,6 +124,21 @@ test('AI verifies the device and only falls back when the GAS action is unsuppor
   assert.match(html,/unknown action\|未対応の操作\|action not found/);
   assert.doesNotMatch(html,/if\(\/timeout.*throw e;\s*return legacy\(\)/s);
   assert.match(html,/body\.name=body\.name\|\|ME/);
+});
+
+test('the seminar registry is hidden from project-and-role UI selectors',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/const isSeminarGroup=/);
+  assert.match(html,/const selectableProjects=\(\)=>activeProjects\(\)\.filter\(p=>!isSeminarGroup\(p\)\)/);
+  assert.match(html,/selectableProjects\(\)\.map\(p=>progRow\(p,true\)\)/);
+  assert.match(html,/const pjOpts=selectableProjects\(\)/);
+});
+
+test('a targeted server logout clears only the currently selected identity without clearing app data',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  assert.match(html,/function clearSelectedIdentity\(\)/);
+  assert.match(html,/\/\^logout:\/\.test/);
+  assert.doesNotMatch(html,/localStorage\.clear\(\)/);
 });
 
 test('privacy, identity recovery, cache scope, and Gemini data mode fail closed',()=>{
