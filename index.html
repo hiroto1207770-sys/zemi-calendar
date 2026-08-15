@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#232a2a">
 <title>水野ゼミ カレンダー</title>
-<link rel="manifest" href="manifest.json?v=64">
+<link rel="manifest" href="manifest.json?v=65">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="水野ゼミカレンダー">
@@ -13,7 +13,7 @@
 <script>
 // 本体より先に更新とエラー表示を準備する。アプリ本体が途中で止まっても、
 // iPhoneホーム画面版が白紙のまま自力復旧できなくなることを防ぐ。
-window.__ZEMI_APP_V__='64';
+window.__ZEMI_APP_V__='65';
 window.__zemiBootReady=false;
 window.__zemiShowBootError=function(){
   const show=()=>{
@@ -29,17 +29,17 @@ window.__zemiSafeReload=async function(){
   try{
     if(window.caches){const ks=await caches.keys();for(const k of ks.filter(x=>x.startsWith('zemi-calendar-v')||x==='zemi-v54'))await caches.delete(k);}
     if('serviceWorker' in navigator){
-      const r=await navigator.serviceWorker.register('./sw.js?v=64',{updateViaCache:'none'});
+      const r=await navigator.serviceWorker.register('./sw.js?v=65',{updateViaCache:'none'});
       try{await r.update();}catch(_){}
       if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
     }
   }catch(_){}
-  const u=new URL(location.href);u.searchParams.set('v','64');u.searchParams.set('recover',Date.now());location.replace(u.href);
+  const u=new URL(location.href);u.searchParams.set('v','65');u.searchParams.set('recover',Date.now());location.replace(u.href);
 };
 window.addEventListener('error',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 window.addEventListener('unhandledrejection',()=>{if(!window.__zemiBootReady)window.__zemiShowBootError();});
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=64',{updateViaCache:'none'}).then(r=>{
+  navigator.serviceWorker.register('./sw.js?v=65',{updateViaCache:'none'}).then(r=>{
     try{r.update();}catch(_){}
     if(r.waiting)r.waiting.postMessage({type:'SKIP_WAITING'});
   }).catch(()=>{});
@@ -641,7 +641,8 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
 
   <div class="sec" style="margin-top:14px">プロフィール</div>
   <label>あなた（本名を選ぶ）</label>
-  <select id="c_me"></select>
+  <input id="c_me" list="c_me_list" autocomplete="name" placeholder="本名を入力してください">
+  <datalist id="c_me_list"></datalist>
   <p class="help" id="c_mehelp">自分の名前を選んでください。</p>
   <label>カレンダーに表示する名前（表示名）</label>
   <input id="c_disp" placeholder="例）ひろと（空なら本名がそのまま出ます）">
@@ -658,12 +659,12 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin:4px 0 8px"><button class="no" id="c_syncnow" type="button" style="flex:1">🔄 いま同期する</button></div>
   <p class="help" id="c_syncinfo"></p>
   <input id="c_url" type="hidden"><!-- つなぎ先URLはDEFAULT_URLで固定運用。編集UIは廃止（面縮小・誤操作防止）。ICSリンク生成にのみ内部利用 -->
-  <label>同期の合言葉</label>
-  <input id="c_key" type="password" autocomplete="off" placeholder="iPhoneとPCで同じ合言葉">
-  <p class="help">予定を同期するための合言葉です。管理者パスワードや、名前を選ぶときの本人確認用暗証番号とは別です。</p>
+  <label>同期</label>
+  <div id="c_syncauth" class="help">自動同期を準備しています…</div>
+  <p class="help">起動時・アプリへ戻ったとき・使用中は20秒ごとに自動同期します。共有の合言葉は不要です。</p>
   <label>iPhoneカレンダーに反映</label>
   <div class="row"><input id="c_ics" readonly placeholder=""><button type="button" class="no" id="c_icscopy" style="flex:0 0 auto;padding:0 16px">コピー</button></div>
-  <p class="help">このURLを iPhone「設定 → アプリ → カレンダー → カレンダーアカウント → アカウントを追加 → その他 → 照会するカレンダーを追加」へ。<b>ゼミ全体と自分が関わる予定だけ</b>が反映されます。<b>このURLはあなた専用</b>（本人だけの合言葉つき）なので、他の人には教えないでください。</p>
+  <p class="help">このURLを iPhone「設定 → アプリ → カレンダー → カレンダーアカウント → アカウントを追加 → その他 → 照会するカレンダーを追加」へ。<b>ゼミ全体と自分が関わる予定だけ</b>が反映されます。<b>このURLはあなた専用</b>（端末トークンつき）なので、他の人には教えないでください。</p>
 
   <div class="sec" style="margin-top:22px">通知（ロック画面に届く）</div>
   <div id="notifWrap">
@@ -754,7 +755,7 @@ button,select,input,textarea,.item,.seg,nav,label{touch-action:manipulation}
   <div class="acts" style="margin-top:12px"><button class="no" id="auditClose" style="flex:1">とじる</button></div>
 </div></div>
 
-<script src="ai-core.js?v=64" onerror="window.__zemiShowBootError()"></script>
+<script src="ai-core.js?v=65" onerror="window.__zemiShowBootError()"></script>
 <script>
 /* ============================================================
    ゼミ台帳 — 単一ファイルPWA
@@ -767,7 +768,7 @@ const MEM = {};
 const now = () => Date.now();
 // 起動・同期より前に必ず定義する。後方に置くと、移行データの初回送信時に
 // apiPost() が未初期化の定数を参照して起動が止まる。
-const APP_V=window.__ZEMI_APP_V__||'64'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
+const APP_V=window.__ZEMI_APP_V__||'65'; // ※sw.js の V(zemi-calendar-vNN) と常に同じ番号にする
 
 /* ------------------ 揮発性対策：Cookieへの二重保存（iOS Safari等でlocalStorageが消えても名前が復活する） ------------------ */
 // localStorageはiOSのITPで7日で消えることがある。名前(ME)・端末ID(DEV)・ロック状態だけはCookieにも保存し、
@@ -786,6 +787,7 @@ function backupIdentity(){   // 現在の身元情報をCookieへ退避（localS
 }
 function clearSelectedIdentity(){
   ME='';ME_LOCKED=false;ADMIN_OK=false;_adminUnlocked=false;
+  setSyncToken('');
   LS.set('me','');LS.set('meLocked',false);LS.set('meLockedAt',0);
   CK.set(IDCK,JSON.stringify({me:'',dev:DEV,ml:0,mla:0}));
 }
@@ -799,12 +801,20 @@ function setAdminSecret(s){ if(!s) return; CK.set(ADMSEC_CK, s); LS.set('admsec'
 // 実名簿を公開HTMLへ埋め込まない。正式な名簿は認証後にGASから取得する。
 const MEMBERS0 = [];
 const DEFAULT_URL='https://script.google.com/macros/s/AKfycbzMgMk3mHcQBHsUAQd9Bkn6i0DB4pS7LOMcW68kCp_iPhI_FYa56Ei-Diei1Km2ikz5/exec';
-const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', logo:'', theme:'light', icsToken:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
+const CFG = Object.assign({ url:DEFAULT_URL, appKey:'', syncToken:'', logo:'', theme:'light', icsToken:'', members:MEMBERS0.map(m=>({...m})) }, LS.get('cfg',{}));
 CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定運用（フロントからの編集・保存を廃止＝プロキシ宛先を固定）
+const SYNC_CK='zemi_synctok';
+if(!CFG.syncToken) CFG.syncToken=CK.get(SYNC_CK)||''; // localStorageが揮発しても同じPWA端末なら自動復元
+function setSyncToken(token){
+  CFG.syncToken=String(token||'');
+  CK.set(SYNC_CK,CFG.syncToken);
+  if(CFG.syncToken) CFG.appKey=''; // 旧合言葉は移行成功後にだけ端末から外す
+  LS.set('cfg',CFG);
+  try{ if(typeof idbGet==='function'&&typeof idbSet==='function') idbGet('pushcfg').then(c=>{if(c)idbSet('pushcfg',{...c,key:CFG.appKey||'',syncToken:CFG.syncToken||'',me:ME||'',dev:DEV||''});}); }catch(e){}
+}
 // 【秘匿情報のGAS集約】フロントはGeminiキー等の秘密を一切持たない。過去に保存された痕跡をlocalStorageから抹消する。
 if(('geminiKey' in CFG)||('geminiModel' in CFG)||('adminPass' in CFG)){ delete CFG.geminiKey; delete CFG.geminiModel; delete CFG.adminPass; LS.set('cfg',CFG); }
-// 合言葉は必須（自動では入れない）。ただし「名前を選んでログイン済みの端末」は一度入れたら記憶し、
-// 名前未設定の端末は毎回入力を求める（＝合言葉を知っていれば閲覧はできるが、開くたびに要入力）。
+// v65: 通常同期は端末専用トークン。既存端末に残る旧合言葉はトークン発行の移行時にだけ使い、成功後に削除する。
 // 番号つきの旧モデルは次々に廃止される（limit:0 / no longer available エラー）→「自動選択」へ移行
 // 開発初期のひらがな名簿が残っている端末は本名リストへ自動移行（正式な名簿は次の同期でサーバから届く）
 // 旧プレースホルダー名のままなら実際のゼミ生に置き換える
@@ -977,7 +987,7 @@ async function fetchTimed(url,options,timeoutMs){
 // ランダムなウェイト（ジッター）を挟んで1回だけリトライする。長い再試行は画面を止めず自動同期に任せる。
 async function apiPost(body, _try){
   _try=_try||0;
-  body.key=CFG.appKey||''; body.me=ME||''; body.name=body.name||ME||''; body.dev=body.dev||DEV||''; body.v=APP_V;   // 新旧GASの両方へ本人名と端末を送る
+  body.key=CFG.appKey||''; body.syncToken=CFG.syncToken||''; body.me=ME||''; body.name=body.name||ME||''; body.dev=body.dev||DEV||''; body.v=APP_V;   // 旧合言葉は移行時のみ。通常は端末トークンで認証
   if((body.action==='merge'||/^ai/.test(String(body.action||'')))&&canManageApp()){body.admin=true;body.secret=adminSecret();}
   const MAXTRY=1, timeout=/^ai/.test(String(body.action||''))?AI_TIMEOUT_MS:API_TIMEOUT_MS;
   try{
@@ -1013,6 +1023,7 @@ const API = {
     // seen/dev/ua はオンライン判定用。旧GASは未知の項目を無視するため後方互換。
     // 新GASではCacheServiceだけに短時間保持し、名簿・予定・暗証番号のシートには書き込まない。
     const u=CFG.url+'?action=load'+(CFG.appKey?'&key='+encodeURIComponent(CFG.appKey):'')+
+      (CFG.syncToken?'&syncToken='+encodeURIComponent(CFG.syncToken):'')+
       '&me='+encodeURIComponent(ME||'')+'&dev='+encodeURIComponent(DEV||'')+
       '&ua='+encodeURIComponent(navigator.userAgent||'')+(ME?'&seen=1':'')+
       (_booted?'':'&boot=1')+(useH?'&h='+encodeURIComponent(_sig):'');
@@ -1453,7 +1464,7 @@ function renderSync(){
   const stCls={ok:'',off:'off',err:'err',auth:'err',busy:'busy'}[syncState]||'off';
   const stTxt=syncState==='ok'
     ?(pending.length?`未送信 ${pending.length}件`:'サーバ保存済み')
-    :({off:'端末内のみ',err:pending.length?`端末に保存済み・未送信 ${pending.length}件`:'端末データで表示中・再接続待ち',auth:'⚠合言葉が必要（設定から入力）',busy:'バックグラウンドで同期中…'}[syncState]||'');
+    :({off:'端末内のみ',err:pending.length?`端末に保存済み・未送信 ${pending.length}件`:'端末データで表示中・再接続待ち',auth:'⚠この端末の本人確認が必要',busy:'バックグラウンドで同期中…'}[syncState]||'');
   s.innerHTML=CFG.url?`<span class="st ${stCls}"><span class="led"></span>${stTxt}</span> ・ <button id="opencfg">設定</button>`
     :`<b>この端末の中だけに保存されています</b><br><button id="opencfg">全員で共有する設定をする</button>`;
   $('#opencfg').onclick=openCfg;
@@ -1495,7 +1506,7 @@ function beaconFlush(){
   if(!CFG.url||!pending.length||!navigator.sendBeacon) return;
   const ids=[...pending],okId=x=>x&&x.id&&x.id!=='undefined'&&x.id!=='null';
   const changed={projects:DB.projects.filter(p=>ids.includes(p.id)&&okId(p)),items:DB.items.filter(i=>ids.includes(i.id)&&okId(i))};
-  const body={action:'merge',changed,key:CFG.appKey||'',me:ME||'',dev:DEV||'',v:APP_V};
+  const body={action:'merge',changed,key:CFG.appKey||'',syncToken:CFG.syncToken||'',me:ME||'',dev:DEV||'',v:APP_V};
   if(canManageApp()){body.admin=true;body.secret=adminSecret();}
   try{ navigator.sendBeacon(CFG.url,new Blob([JSON.stringify(body)],{type:'text/plain;charset=utf-8'})); }catch(e){}
 }
@@ -2088,7 +2099,7 @@ async function enablePush(){
       } else throw err;
     }
     await apiPost({action:'subscribe',name:ME,sub:sub.toJSON()});
-    await idbSet('pushcfg',{url:CFG.url,key:CFG.appKey||'',me:ME,vapidPub:pub});
+    await idbSet('pushcfg',{url:CFG.url,key:CFG.appKey||'',syncToken:CFG.syncToken||'',me:ME,dev:DEV,vapidPub:pub});
     toast('この端末で通知を受け取ります');
   }catch(e){ console.warn('push設定失敗',e); toast('通知の設定に失敗しました: '+e.message); }
   renderPushUI();
@@ -2272,13 +2283,15 @@ $('#ai_addbtn').onclick=async()=>{
 let memEdit=[];
 const claimDevs=name=>{ const canonical=canonicalIdentityName(name),all=[]; Object.keys(CLAIMS||{}).forEach(k=>{if(canonicalIdentityName(k)===canonical){const c=CLAIMS[k],xs=Array.isArray(c)?c:(c?[c]:[]);xs.forEach(x=>{if(!all.includes(x))all.push(x);});}}); return all; }; // 表示名で作られた旧claimも本名へ統合して扱う
 function refreshMeOptions(){
-  // 同じ人の複数端末を許可：他端末が使っていても選べる（保存時に本人確認の確認だけ出す）
-  $('#c_me').innerHTML=`<option value="">（未設定）</option>`+selectableMembers(memEdit).map(m=>{
+  // 候補は端末に取得済みの名簿だけ。新端末でも本名を直接入力でき、公開HTMLへ名簿は埋め込まない。
+  const input=$('#c_me'),typed=input.value;
+  $('#c_me_list').innerHTML=selectableMembers(memEdit).map(m=>{
     const devs=claimDevs(m.name), mine=devs.includes(DEV), others=devs.filter(d=>d!==DEV).length;
-    const disp = DISPLAY[m.name] && DISPLAY[m.name]!==m.name ? `（${esc(DISPLAY[m.name])}）` : '';
-    const mark = mine ? ' — この端末' : (others ? ' — 他の端末で使用中' : '');
-    return `<option value="${esc(m.name)}" ${m.name===ME?'selected':''}>${esc(m.name)}${disp}${mark}</option>`;
+    const disp = DISPLAY[m.name] && DISPLAY[m.name]!==m.name ? `（${DISPLAY[m.name]}）` : '';
+    const mark = mine ? 'この端末' : (others ? '他の端末でも利用中' : '');
+    return `<option value="${esc(m.name)}" label="${esc([disp,mark].filter(Boolean).join('・'))}"></option>`;
   }).join('');
+  input.value=ME||typed||'';
 }
 function renderMemListRO(){
   const el=$('#c_memlist_ro'); if(!el) return;
@@ -2426,7 +2439,7 @@ function auditCause(log){
   const raw=[log&&log.reason,log&&log.code,log&&log.action,log&&log.detail].filter(Boolean).join(' ').toLowerCase();
   if(/bad.?pass|wrong.?pass|パスワード|checkadminpass/.test(raw)) return ['管理者パスワードの不一致','本人の操作か確認し、心当たりがなければ管理者パスワードを変更してください。'];
   if(/unknown.?dev|unregistered|secret|device|端末/.test(raw)) return ['未登録端末から管理者機能へ接続','自分の新端末なら再認証し、心当たりがなければ端末一覧と時刻を確認してください。'];
-  if(/unauthor|app.?key|合言葉|key/.test(raw)) return ['合言葉または認証情報が不一致','古いURL・古いアプリ・入力間違いがないか確認してください。'];
+  if(/unauthor|app.?key|合言葉|key/.test(raw)) return ['端末の認証情報が不一致','設定で本名と暗証番号を確認してください。'];
   if(/rate|too.?many|429|連続/.test(raw)) return ['短時間に接続が集中','自動再試行や複数タブを閉じ、数分後に再確認してください。'];
   if(/old.?version|version|版/.test(raw)) return ['古いアプリ版からの書き込み','該当端末でアプリを再読み込みし、最新版へ更新してください。'];
   return ['サーバが通常と異なる接続として記録','時刻・操作・端末を照合し、心当たりがなければ認証情報を更新してください。'];
@@ -2579,7 +2592,7 @@ $('#c_syncnow').onclick=async()=>{
   $('#c_syncinfo').textContent='同期しています…';
   try{
     const ok=await syncNow();
-    const st={ok:'接続OK',err:'接続エラー（端末データで表示・再接続待ち）',auth:'⚠合言葉が違います/未入力',off:'未共有'}[syncState]||'';
+    const st={ok:'接続OK',err:'接続エラー（端末データで表示・再接続待ち）',auth:'⚠この端末の本人確認が必要',off:'未共有'}[syncState]||'';
     $('#c_syncinfo').textContent=ok?`完了 ${_lastSync}（アプリ v${APP_V}・${st}）`:`${st}（アプリ v${APP_V}）`;
   }finally{btn.disabled=false;}
 };
@@ -2590,24 +2603,29 @@ document.querySelectorAll('#c_theme button').forEach(b=>b.onclick=()=>{ CFG.them
 /* ICSリンクは 設定シート内の入力からその場で組み立てる（名前を選んだ瞬間に表示される） */
 function refreshIcsField(){
   const me=$('#c_me').value, url=$('#c_url').value.trim();
-  const key=$('#c_key').value.trim();
   const tok=CFG.icsToken||'';   // 本人トークン（各自のURLに埋め込む・他人には教えない）
-  $('#c_ics').value=(url&&me)?url+'?action=ics&me='+encodeURIComponent(me)+(tok?'&t='+encodeURIComponent(tok):'')+(key?'&key='+encodeURIComponent(key):''):'';
-  $('#c_ics').placeholder=(url&&me)?'':(!url?'「つなぎ先URL」を入れると表示されます':'上で自分の名前を選ぶと表示されます');
+  $('#c_ics').value=(url&&me&&tok)?url+'?action=ics&me='+encodeURIComponent(me)+'&t='+encodeURIComponent(tok):'';
+  $('#c_ics').placeholder=(url&&me&&!tok)?'本人確認後に表示されます':(!url?'接続先が未設定です':'自分の本名を入力すると表示されます');
 }
-/* ICS購読の本人トークンをまだ持っていない端末なら発行してもらう（本人確認済みのときだけ・移行用）。 */
-async function ensureIcsToken(){
-  if(!ME||!CFG.url||CFG.icsToken) return;
-  if(!claimDevs(ME).includes(DEV)) return;   // この端末が本人確認(claim)済みのときだけ。未確認なら名前を選び直したとき発行される
+/* 既存端末は保存済みの旧合言葉を1回だけ使い、同期・ICSトークンへ無操作で移行する。 */
+async function ensureDeviceTokens(pin){
+  if(!ME||!CFG.url||CFG.syncToken) return !!CFG.syncToken;
+  if(!pin&&!CFG.appKey) return false;
   try{
     const disp=(DISPLAY[ME]||'');
-    const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,admin:isAdmin()});   // 既に予約済みなら暗証番号なしで通る（べき等）
+    const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,pin:pin||'',admin:isAdmin()});
+    if(r&&r.badpin) return false;
+    if(r&&r.claimDevs){CLAIMS={...CLAIMS,[ME]:r.claimDevs};LS.set('claims',CLAIMS);}
+    else if(r&&r.claims){CLAIMS=r.claims;LS.set('claims',CLAIMS);} // v64以前のGASとの移行互換
+    if(r&&typeof r.displayName==='string'){DISPLAY={...DISPLAY,[ME]:r.displayName};LS.set('display',DISPLAY);}
+    else if(r&&r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
     if(r&&r.token){ CFG.icsToken=r.token; LS.set('cfg',CFG); refreshIcsField(); }
+    if(r&&r.syncToken){setSyncToken(r.syncToken);return true;}
   }catch(e){ /* オフライン等は次回に */ }
+  return false;
 }
 $('#c_me').addEventListener('change',refreshIcsField);
 $('#c_url').addEventListener('input',refreshIcsField);
-$('#c_key').addEventListener('input',refreshIcsField);
 $('#c_icscopy').onclick=()=>{ const u=$('#c_ics').value; if(!u){toast('共有(URL)と自分の名前を設定してください');return;} navigator.clipboard?.writeText(u); toast('URLをコピーしました'); };
 // 無料枠ではキーの有無に関係なく外部送信しない。ローカル回答モードを明示する。
 function renderAiStatus(){
@@ -2635,13 +2653,13 @@ function openCfg(){
   // 名簿は全員に表示。管理メニュー（追加・削除・AIキー・パス変更）は管理者パスで解錠したときだけ。
   renderMemListRO(); paintAdmin();
   $('#c_url').value=CFG.url;   // 非表示のhidden入力。ICSリンク生成に内部利用
-  $('#c_key').value=CFG.appKey||'';
   renderAiStatus();   // AIキーの有無だけを表示（キー本体はサーバのみ・フロントに持たない）
   $('#c_span').checked=CFG.spanArrow!==false;
   $('#c_syncinfo').textContent='アプリ v'+APP_V+(_lastSync?'・最終同期 '+_lastSync:'');
   $('#c_goal1').value=GOALS.zemi||''; $('#c_goal2').value=GOALS.gen||'';
   refreshIcsField();
-  ensureIcsToken();   // 本人トークンが未取得なら取りに行き、取れたらICS URLを更新
+  $('#c_syncauth').textContent=CFG.syncToken?'✅ この端末は本人確認済み・自動同期中':'本人確認後、自動同期が有効になります';
+  ensureDeviceTokens(); // 旧合言葉を持つ既存端末だけ、裏で安全に自動移行
   renderPushUI();
   $('#cfg').hidden=false;
 }
@@ -2674,53 +2692,29 @@ $('#cfgNo').onclick=()=>$('#cfg').hidden=true;
 $('#cfgOk').onclick=async()=>{
   toast('設定を確認して保存しています…');
   CFG.url=DEFAULT_URL;   // つなぎ先はDEFAULT_URLで固定（編集UI廃止）
-  const priorAppKey=CFG.appKey||'';
-  const enteredAppKey=$('#c_key').value.trim();
-  CFG.appKey=enteredAppKey;
   const wasAdmin=isAdmin();
   if(wasAdmin){ // メンバーは管理者のみ変更可（AIキーはフロントで扱わない＝サーバのGEMINI_KEYのみ）
     CFG.members=memEdit.map(m=>({...m,name:m.name,birthday:m.birthday||'',email:m.email||'',aliases:Array.isArray(m.aliases)?m.aliases:[]})).filter(m=>m.name);
   }
   CFG.spanArrow=$('#c_span').checked;
-  const priorMe=ME, priorLocked=ME_LOCKED;
+  const priorMe=ME, priorLocked=ME_LOCKED, priorSyncToken=CFG.syncToken||'';
   let priorClaimed=!!(priorMe&&claimDevs(priorMe).includes(DEV));
   const chosen=canonicalIdentityName($('#c_me').value,memEdit,DISPLAY);
   const nameChanged=!$('#c_me').disabled && chosen!==ME;
-  const revert=()=>{ ME=priorClaimed?priorMe:''; ME_LOCKED=priorClaimed?priorLocked:false; LS.set('me',ME); LS.set('meLocked',ME_LOCKED); backupIdentity(); refreshMeOptions(); };
+  const revert=()=>{ ME=priorClaimed?priorMe:''; ME_LOCKED=priorClaimed?priorLocked:false; setSyncToken(priorClaimed?priorSyncToken:''); LS.set('me',ME); LS.set('meLocked',ME_LOCKED); backupIdentity(); refreshMeOptions(); };
   if(nameChanged){
-    ME=chosen; _adminUnlocked=false;
+    ME=chosen; _adminUnlocked=false; setSyncToken('');
     if(ME){ ME_LOCKED=true; LS.set('meLocked',true); LS.set('meLockedAt',now());
       const _seen=LS.get('meUnlockSeen',{}); _seen[ME]=_unlocks[ME]||0; LS.set('meUnlockSeen',_seen); } // 一度選んだら固定（既存の解除記録は消費済みにして蒸し返さない）
-  }
-  // 新しいPCに古い端末情報が残っていても、それを本人確認済みとはみなさない。
-  // 合言葉を変更した直後、または認証エラーからの復旧時は、サーバのclaims/displayを必ず全取得してからclaimする。
-  if(ME&&CFG.url&&(enteredAppKey!==priorAppKey||syncState==='auth')){
-    try{
-      const remote=await API.load({forceFull:true});
-      if(!remote||!remote.claims||typeof remote.claims!=='object') throw new Error('identity_meta_missing');
-      CLAIMS=remote.claims;LS.set('claims',CLAIMS);
-      if(remote.display&&typeof remote.display==='object'){DISPLAY=remote.display;LS.set('display',DISPLAY);}
-      if(remote.pinset&&typeof remote.pinset==='object'){PINSET=remote.pinset;LS.set('pinset',PINSET);}
-      priorClaimed=!!(priorMe&&claimDevs(priorMe).includes(DEV));
-      if(DISPLAY[ME]&&!_adminUnlocked){$('#c_disp').value=DISPLAY[ME];$('#c_disp').disabled=true;}
-      _authNotified=false;
-    }catch(e){
-      CFG.appKey=priorAppKey;
-      revert();
-      toast(String(e.message)==='unauthorized'
-        ?'同期の合言葉が違います。iPhoneと同じ合言葉を入力してください'
-        :'サーバーの本人情報を確認できませんでした。通信を確認して、もう一度保存してください');
-      return;
-    }
   }
   // 本名の予約＋表示名の登録（サーバ共有）。
   // 本人確認＝各自の「暗証番号」。初めて選んだ人がその場で決め、以後どの端末でも同じ番号で入れる（他人は入れない）。
   if(ME&&CFG.url){
     let pin='';
-    if(!claimDevs(ME).includes(DEV)){ // この端末でまだ本人確認が済んでいないときだけ聞く
+    if(!CFG.syncToken){ // ローカルclaimsではなくサーバ発行トークンで、この端末の本人性を確定する
       pin=PINSET[ME]
-        ? prompt('「'+dispName(ME)+'」の暗証番号を入力してください（本人確認）')
-        : prompt('「'+dispName(ME)+'」の暗証番号を決めてください（例：数字4桁）\n自分のiPhone・iPad・PCで入るときの本人確認に使います。他の人には教えないでください');
+        ? prompt('「'+dispName(ME)+'」の暗証番号を入力してください（この端末の本人確認・初回だけ）')
+        : prompt('「'+dispName(ME)+'」の暗証番号を入力してください。初めて登録する名前は管理者による利用開始設定が必要です');
       if(pin===null||!pin.trim()){ if(nameChanged)revert(); return; }
       pin=pin.trim();
     }
@@ -2728,12 +2722,18 @@ $('#cfgOk').onclick=async()=>{
     try{
       const r=await apiPost({action:'claim',name:ME,dev:DEV,disp,pin,admin:isAdmin()});
       if(r&&r.badpin){ toast('暗証番号が違います。本人でなければこの名前は選べません'); revert(); return; }
-      if(!r||!r.ok||!r.claims) throw new Error('本人確認の応答が不完全です');
-      CLAIMS=r.claims;LS.set('claims',CLAIMS);
+      if(r&&r.enrollment){ toast('初めて使う名前です。管理者に利用開始設定を依頼してください'); revert(); return; }
+      if(!r||!r.ok||!r.syncToken) throw new Error('本人確認の応答が不完全です');
+      if(r.claimDevs){CLAIMS={...CLAIMS,[ME]:r.claimDevs};LS.set('claims',CLAIMS);}
+      else if(r.claims){CLAIMS=r.claims;LS.set('claims',CLAIMS);}
       if(!claimDevs(ME).includes(DEV)) throw new Error('この端末の登録を確認できませんでした');
-      if(r&&r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
-      if(r&&r.pinset){PINSET=r.pinset;LS.set('pinset',PINSET);}
+      if(typeof r.displayName==='string'){DISPLAY={...DISPLAY,[ME]:r.displayName};LS.set('display',DISPLAY);}
+      else if(r.display){DISPLAY=r.display;LS.set('display',DISPLAY);}
+      if(typeof r.pinSet==='boolean'){PINSET={...PINSET,[ME]:r.pinSet};LS.set('pinset',PINSET);}
+      else if(r.pinset){PINSET=r.pinset;LS.set('pinset',PINSET);}
       if(r&&r.token){CFG.icsToken=r.token;LS.set('cfg',CFG);}   // ICS購読用の本人トークンを保存（URLに埋め込む）
+      setSyncToken(r.syncToken);
+      _authNotified=false;
     }catch(e){ toast('本人確認を完了できませんでした。通信を確認して、もう一度保存してください'); revert(); return; }
   }
   if(ME&&!CFG.members.some(m=>m.name===ME))CFG.members.push({name:ME,birthday:'',email:''});
@@ -3019,7 +3019,7 @@ async function syncNow(){
       // 直後に再接続すると同じ重い処理が重なるため、最低20秒は新しい同期を始めない。
       if(String(e.message)==='timeout')_syncCooldownUntil=Date.now()+20000;
       if(String(e.message)==='unauthorized'){
-        if(!_authNotified){toast('合言葉を設定画面から入力してください');_authNotified=true;}
+        if(!_authNotified){toast('設定で自分の名前と暗証番号を確認してください（この端末で初回だけ）');_authNotified=true;}
       }else scheduleSyncRetry();
       return false;
     }
@@ -3057,13 +3057,21 @@ async function boot(){
   window.__zemiBootReady=true;
   const guard=$('#bootGuard');if(guard)guard.hidden=true;
   if(!LS.get('tutDone',false)) showTut();   // 初めての人に3枚だけ説明
-  // 新端末は同期完了まで空画面にしない。先に名前・合言葉の設定へ案内し、
+  // 新端末は同期完了まで空画面にしない。先に名前と本人確認の設定へ案内し、
   // 背後で共有データの復元を続ける。
   if(CFG.url&&!ME){
     openCfg();
-    toast('まずは自分の名前と合言葉を設定してください');
+    toast('まずは自分の本名を入力してください');
   }
   if(CFG.url)await syncNow();
+  // v64までに合言葉を保存済みの端末は、操作なしで端末専用トークンへ一度だけ移行する。
+  if(CFG.url&&ME&&!CFG.syncToken&&CFG.appKey&&claimDevs(ME).includes(DEV)){
+    await ensureDeviceTokens();
+  }
+  if(CFG.url&&ME&&!CFG.syncToken&&!CFG.appKey){
+    openCfg();
+    toast('このPCだけ、設定の「保存」で本人の暗証番号を一度確認してください');
+  }
   const restoredFromServer=!HAD_LOCAL_DB&&(DB.projects.length>0||DB.items.length>0);
   // 管理者デバイスのパスワードレス自動認証（この端末にシークレットがあり、登録管理者本人のとき）
   if(CFG.url&&ME&&ADMIN_NAME&&ME===ADMIN_NAME&&adminSecret()){ try{ if(await tryAdminAuto()) ADMIN_OK=true; }catch(e){} }

@@ -145,30 +145,43 @@ test('a targeted server logout clears only the currently selected identity witho
 
 test('multi-device login is server-confirmed and never saved optimistically',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
-  assert.match(html,/if\(!r\|\|!r\.ok\|\|!r\.claims\) throw new Error/);
+  assert.match(html,/if\(!r\|\|!r\.ok\|\|!r\.syncToken\) throw new Error/);
+  assert.match(html,/if\(r\.claimDevs\)\{CLAIMS=\{\.\.\.CLAIMS,\[ME\]:r\.claimDevs\}/);
   assert.match(html,/if\(!claimDevs\(ME\)\.includes\(DEV\)\) throw new Error/);
   assert.match(html,/priorClaimed\?priorMe:''/);
   assert.match(html,/本人確認を完了できませんでした/);
 });
 
-test('PC recovery refreshes server identity before deciding whether a PIN is needed',()=>{
+test('PC recovery uses a server token and asks for the personal PIN only once',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
-  assert.match(html,/async load\(options\)/);
-  assert.match(html,/!forceFull&&_sig/);
-  assert.match(html,/await API\.load\(\{forceFull:true\}\)/);
-  assert.match(html,/CLAIMS=remote\.claims;LS\.set\('claims',CLAIMS\)/);
-  assert.match(html,/DISPLAY=remote\.display;LS\.set\('display',DISPLAY\)/);
-  assert.match(html,/if\(DISPLAY\[ME\]&&!_adminUnlocked\)/);
-  assert.match(html,/CFG\.appKey=priorAppKey;\s*revert\(\)/);
-  assert.ok(html.indexOf('await API.load({forceFull:true})')<html.indexOf("prompt('「'+dispName(ME)+'」の暗証番号"));
+  assert.match(html,/const SYNC_CK='zemi_synctok'/);
+  assert.match(html,/if\(!CFG\.syncToken\) CFG\.syncToken=CK\.get\(SYNC_CK\)/);
+  assert.match(html,/if\(!CFG\.syncToken\).*prompt\('「'\+dispName\(ME\)\+'」の暗証番号/s);
+  assert.match(html,/setSyncToken\(r\.syncToken\)/);
+  assert.match(html,/ensureDeviceTokens\(\)/);
 });
 
-test('the sync passphrase is distinct, always visible, and masked',()=>{
+test('shared sync passphrase UI is removed and automatic sync is explicit',()=>{
   const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
-  assert.match(html,/<label>同期の合言葉<\/label>/);
-  assert.match(html,/<input id="c_key" type="password"/);
-  assert.match(html,/管理者パスワードや、名前を選ぶときの本人確認用暗証番号とは別/);
-  assert.doesNotMatch(html,/id="c_keyon"|id="c_keywrap"/);
+  assert.doesNotMatch(html,/id="c_key"|<label>同期の合言葉<\/label>/);
+  assert.match(html,/共有の合言葉は不要です/);
+  assert.match(html,/setInterval\(\(\)=>\{ if\(CFG\.url&&document\.visibilityState==='visible'\)syncNow\(\); \},20000\)/);
+  assert.match(html,/visibilitychange/);
+  assert.match(html,/window\.addEventListener\('focus'/);
+  assert.match(html,/if\(CFG\.url\)await syncNow\(\)/);
+});
+
+test('sync credentials are bound to the device across load, merge, and beacon paths',()=>{
+  const html=fs.readFileSync(path.resolve(__dirname,'..','index.html'),'utf8');
+  const sw=fs.readFileSync(path.resolve(__dirname,'..','sw.js'),'utf8');
+  assert.match(html,/body\.syncToken=CFG\.syncToken\|\|''/);
+  assert.match(html,/syncToken='\+encodeURIComponent\(CFG\.syncToken\)/);
+  assert.match(html,/const body=\{action:'merge',changed,key:CFG\.appKey\|\|'',syncToken:CFG\.syncToken\|\|''/);
+  assert.match(html,/if\(CFG\.syncToken\) CFG\.appKey=''/);
+  assert.match(html,/idbSet\('pushcfg',\{url:CFG\.url,key:CFG\.appKey\|\|'',syncToken:CFG\.syncToken\|\|''/);
+  assert.match(sw,/syncToken=' \+ encodeURIComponent\(c\.syncToken\)/);
+  assert.match(sw,/dev: c\.dev \|\| '', sub: sub\.toJSON\(\), syncToken: c\.syncToken \|\| ''/);
+  assert.match(html,/if\(CFG\.url&&ME&&!CFG\.syncToken&&!CFG\.appKey\)\{\s*openCfg\(\)/);
 });
 
 test('privacy, identity recovery, cache scope, and Gemini data mode fail closed',()=>{
@@ -180,6 +193,7 @@ test('privacy, identity recovery, cache scope, and Gemini data mode fail closed'
   assert.match(html,/const MEMBERS0 = \[\]/);
   assert.doesNotMatch(html,/みおり|ゆいの|そうた|大翔|山田|佐藤|鈴木|高橋/);
   assert.doesNotMatch(html,/prompt\('このゼミの「合言葉」/);
+  assert.doesNotMatch(html,/id="c_key"/);
   assert.match(html,/if\(!ME&&old&&old\.me\)return/);
   assert.match(html,/samesite=strict;secure/);
   assert.doesNotMatch(html,/\.unregister\(/);
