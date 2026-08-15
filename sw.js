@@ -1,7 +1,7 @@
 // キャッシュ優先 → 裏で更新。GASの初回応答が遅くても画面が即出る。
 // ＋ Web Push受信（本文はGASの notifyfeed から取得してロック画面に表示）
-const V = 'zemi-calendar-v64';
-const CORE = ['./', './index.html', './ai-core.js?v=64', './manifest.json?v=64', './privacy.html', './icon-192.png', './icon-512.png'];
+const V = 'zemi-calendar-v65';
+const CORE = ['./', './index.html', './ai-core.js?v=65', './manifest.json?v=65', './privacy.html', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -49,7 +49,7 @@ self.addEventListener('fetch', e => {
 });
 
 /* ---------------- Web Push ---------------- */
-// ページ側が購読時に保存した接続情報（url/me/key）を IndexedDB から読む
+// ページ側が購読時に保存した接続情報（url/me/dev/syncToken）を IndexedDB から読む
 function idbGet(key) {
   return new Promise(resolve => {
     const rq = indexedDB.open('zemi-push', 1);
@@ -71,7 +71,8 @@ self.addEventListener('push', e => {
       const c = await idbGet('pushcfg');
       if (c && c.url) {
         const r = await fetch(c.url + '?action=notifyfeed&me=' + encodeURIComponent(c.me || '') +
-          (c.key ? '&key=' + encodeURIComponent(c.key) : ''), { cache: 'no-store' });
+          '&dev=' + encodeURIComponent(c.dev || '') +
+          (c.syncToken ? '&syncToken=' + encodeURIComponent(c.syncToken) : (c.key ? '&key=' + encodeURIComponent(c.key) : '')), { cache: 'no-store' });
         const j = await r.json();
         if (j && j.body) { title = j.title || title; body = j.body; }
       }
@@ -101,7 +102,7 @@ self.addEventListener('pushsubscriptionchange', e => {
         applicationServerKey: Uint8Array.from(atob(c.vapidPub.replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0))
       });
       await fetch(c.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'subscribe', name: c.me || '', sub: sub.toJSON(), key: c.key || '' }) });
+        body: JSON.stringify({ action: 'subscribe', name: c.me || '', me: c.me || '', dev: c.dev || '', sub: sub.toJSON(), syncToken: c.syncToken || '', key: c.key || '' }) });
     } catch (_) {}
   })());
 });

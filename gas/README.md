@@ -1,4 +1,4 @@
-# GAS v63 integration
+# GAS v65 integration
 
 The production Apps Script source is not present in this repository. Add both `AIBackend.gs` and `MergeSecurity.gs` to script ID `1ZY764nl6sabP0Sbj4bOFklpBkSmoa767sSWbjEO4nxusezNE4nEMQT1L`, then:
 
@@ -7,7 +7,9 @@ The production Apps Script source is not present in this repository. Add both `A
 3. In the existing `merge` route, verify the name/device claim and admin secret first, then pass the incoming delta through `secureChangedV54_(body.changed, state, {me: verifiedName, isAdmin: verifiedAdmin})` before the LWW merge. Never trust `body.me` or `body.admin` without those server checks.
 4. Set script properties `GEMINI_KEY`, `SPREADSHEET_ID`, `ADMIN_NAME`, and optionally `GEMINI_MODEL` (`gemini-3.5-flash-lite` by default). Set `GEMINI_DATA_MODE=paid` only after confirming the project uses a paid Gemini API or an eligible Google Workspace service with the required data protections. If it is absent, AI external transmission intentionally fails closed.
 5. Add `MultiDeviceIdentity.gs`. In the existing `claim` route, call `identityCompleteClaimV63_(name)` immediately after saving the updated `claims` map. This removes only a stale `logout:` marker after a successful PIN-verified claim; it must not replace or remove any device IDs in `claims[name]`.
-6. Redeploy the existing web-app deployment or create a replacement and update `DEFAULT_URL` in `index.html`.
+6. Add `DeviceTokenAuth.gs`. Keep `APP_KEY` only for silent migration of already configured devices. Normal `load`/`merge`/AI requests must accept a valid `syncToken` bound to the claimed name and device. The `claim` route may bypass `APP_KEY` only after verifying the member's existing PIN; a first-ever claim without a PIN remains administrator-assisted.
+7. Issue `syncTokenIssueV65_(name, dev)` after a successful claim, return it once to the client, and call `syncTokenRevokeIdentityV65_(name)` whenever that identity's claims are cleared. The ICS route remains protected by its separate `t` token and must not require `APP_KEY`.
+8. Redeploy the existing web-app deployment or create a replacement and update `DEFAULT_URL` in `index.html`.
 
 The authoritative item storage must preserve `completionMode`, `doneBy`, `createdBy`, and `comments`. Any `notifyfeed` or morning-reminder logic must use the requesting member's `doneBy[me]` state for `completionMode: "individual"` tasks instead of filtering only on the legacy top-level `done` value.
 
